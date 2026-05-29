@@ -154,7 +154,7 @@
   /* compact leaderboard */
   .lb{display:flex;flex-direction:column;gap:2px}
   .lb-row{
-    display:grid;grid-template-columns:26px 1fr auto;align-items:center;gap:10px;
+    display:grid;grid-template-columns:24px minmax(0,1fr) minmax(0,1.4fr) auto;align-items:center;gap:9px;
     padding:8px 8px;border-radius:10px;transition:background .2s, transform .45s var(--ease);
   }
   .lb-row .rank{font-family:var(--mono);font-size:13px;color:var(--ink-faint);text-align:center}
@@ -269,7 +269,7 @@
   }
   .plb-row .prank{font-family:var(--font-display);font-weight:700;font-size:clamp(20px,2.2vw,28px);color:var(--ink-faint);text-align:center}
   .plb-row .pnm{font-weight:700;font-size:clamp(16px,1.8vw,22px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:9px}
-  .plb-row .pmeta{font-family:var(--mono);font-size:clamp(11px,1.1vw,13px);color:var(--ink-faint);margin-top:3px}
+  .plb-row .pmeta{font-family:var(--mono);font-size:clamp(11px,1.1vw,13px);color:var(--ink-faint);margin-top:4px;display:flex;align-items:center;gap:10px;min-width:0}
   .plb-row .pscore{font-family:var(--mono);font-weight:700;font-size:clamp(22px,2.6vw,34px);color:var(--honey);text-align:right}
   .plb-row .pscore .stotal{display:block;font-size:11px;color:var(--ink-faint);font-weight:400;margin-top:2px}
   .plb-row.top1{background:linear-gradient(100deg,rgba(255,201,60,.16),var(--panel));border-color:rgba(255,201,60,.4);box-shadow:0 0 0 1px rgba(255,201,60,.2)}
@@ -352,11 +352,12 @@
   .rcc-delta{font-family:var(--mono,ui-monospace,monospace);font-size:12px;font-weight:800;text-align:right;font-variant-numeric:tabular-nums}
   .recap.sat{display:flex;align-items:center;gap:12px}
   .recap.sat .rc-chip{width:30px;height:30px}
-  /* compact guess history (leaderboard): real over guess, oldest→newest */
-  .hist{display:flex;gap:2px;flex-wrap:wrap;grid-column:1/-1;margin-top:4px}
+  /* compact guess history (leaderboard): real over guess, oldest→newest, inline */
+  .hist{display:flex;gap:2px;flex-wrap:nowrap;overflow:hidden;min-width:0;justify-content:flex-end}
   .hist .hx{display:flex;flex-direction:column;width:8px;height:16px;border-radius:2px;overflow:hidden;border:1px solid rgba(255,255,255,.1);flex:none}
   .hist .hx i{flex:1;display:block}
-  .plb-row .hist .hx{width:10px;height:18px}
+  .plb-row .hist{justify-content:flex-start}
+  .plb-row .hist .hx{width:11px;height:20px}
   .pr-recap{margin:4px 0 12px;padding:11px 13px;border:1px solid var(--line2);border-radius:13px;background:var(--bg)}
   .pr-recap .h{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:800;margin-bottom:7px}
   .pr-recap .row{display:flex;align-items:center;gap:9px;font-size:15px;margin:4px 0}
@@ -1094,10 +1095,9 @@ function medal(rank){ return rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':'';
 // Compact guess history: a row of tiny swatch pairs (real on top, your guess
 // below), oldest→newest, so you can see how someone guessed over many rounds.
 function historyStrip(history, max){
-  if(!history || !history.length) return '';
-  const items = history.slice(-(max||16));
+  const items = (history||[]).slice(-(max||16));
   return '<div class="hist">'+items.map(h=>
-    '<span class="hx" title="real '+normHex(h.t).toUpperCase()+' · guess '+normHex(h.g).toUpperCase()+' · '+h.s+'%">'+
+    '<span class="hx" title="real '+normHex(h.t).toUpperCase()+' → your guess '+normHex(h.g).toUpperCase()+' · '+h.s+'%">'+
       '<i style="background:'+normHex(h.t)+'"></i><i style="background:'+normHex(h.g)+'"></i></span>'
   ).join('')+'</div>';
 }
@@ -1113,8 +1113,8 @@ function renderCompactLB(host, lb){
     row.innerHTML =
       '<span class="rank">'+(medal(i+1)||(i+1))+'</span>'+
       '<span class="nm"><span class="conn-dot'+(p.connected?'':' off')+'"></span>'+escapeHtml(p.name)+'</span>'+
-      '<span><span class="sc">'+(p.rankedScore==null?'—':Math.round(p.rankedScore)+'%')+'</span> <span class="sub">'+(p.rounds?p.rounds+(p.rounds===1?' round':' rounds'):'new')+'</span></span>'+
-      historyStrip(p.history, 12);
+      historyStrip(p.history, 12)+
+      '<span><span class="sc">'+(p.rankedScore==null?'—':Math.round(p.rankedScore)+'%')+'</span> <span class="sub">'+(p.rounds?p.rounds+(p.rounds===1?' round':' rounds'):'new')+'</span></span>';
     host.appendChild(row);
   });
 }
@@ -1138,8 +1138,7 @@ function renderPresentLB(lb){
       '<span class="prank">'+(medal(i+1)||(i+1))+'</span>'+
       '<div style="min-width:0">'+
         '<div class="pnm">'+crown+'<span class="conn-dot'+(p.connected?'':' off')+'"></span>'+escapeHtml(p.name)+'</div>'+
-        '<div class="pmeta">'+(p.rounds?(p.rounds+' rounds · '+Math.round(p.trueAvg)+'% avg'):'yet to guess')+'</div>'+
-        historyStrip(p.history, 16)+
+        '<div class="pmeta"><span style="white-space:nowrap">'+(p.rounds?(p.rounds+' rounds · '+Math.round(p.trueAvg)+'% avg'):'yet to guess')+'</span>'+historyStrip(p.history, 16)+'</div>'+
       '</div>'+
       '<div class="pscore">'+(p.rankedScore==null?'—':Math.round(p.rankedScore)+'%')+'<span class="stotal">'+Math.round(p.total)+' pts</span></div>';
     host.appendChild(row); // re-append in order
