@@ -28,14 +28,20 @@ export interface TargetColor {
 // ---------------------------------------------------------------------------
 
 /**
- * Scoring falloff. score = round(100 * exp(-K_FALLOFF * dist^K_POWER)).
- * Generous-but-discriminating (party game): the power keeps close colors high
- * while far misses still bottom out. At K=23/power=3: greens #4CB853/#4CF24C
- * (dist .166) ~90, rose/brick #C87F7D/#A62D0B (dist .204) ~82, mid (.3) ~54,
- * far (.5) ~6, opposite ~0.
+ * Scoring weights (HSL-based). Humans judge color match by HUE first, then
+ * saturation, then lightness — so we score on a weighted HSL distance rather
+ * than perceptual Euclidean (which over-penalizes brightness). Hue is also
+ * scaled by the lower of the two saturations: a near-gray has no meaningful
+ * hue, so its hue error shouldn't dominate.
+ * score = round(100 * exp(-SCORE_K * (HUE_W*dHue*minSat + SAT_W*dSat + LUM_W*dLum))).
+ * Playtest pairs: greens #4CB853/#4CF24C ~86, rose/brick #C87F7D/#A62D0B ~80,
+ * olive/lime #527B3F/#4BFB3B ~78 (same hue, very different brightness),
+ * pink/red #EA75D7/#D45B6B ~67 (a real ~42° hue shift), opposite hue ~8.
  */
-export const K_FALLOFF = 23;
-export const K_POWER = 3;
+export const HUE_W = 1.0;
+export const SAT_W = 0.1;
+export const LUM_W = 0.05;
+export const SCORE_K = 2.5;
 
 /** Bayesian shrinkage prior mean (percent) for ranking few-round players. */
 export const PRIOR_MEAN = 55;
@@ -144,14 +150,47 @@ export function oklabDistance(a: Oklab, b: Oklab): number {
   return Math.sqrt(dL * dL + da * da + db * db);
 }
 
+export interface Hsl {
+  h: number; // 0..360
+  s: number; // 0..1
+  l: number; // 0..1
+}
+
+/** Convert "#RRGGBB" to HSL. */
+export function hexToHsl(hex: string): Hsl {
+  const { r, g, b } = parseHex(hex); // r,g,b already in 0..1
+  const mx = Math.max(r, g, b),
+    mn = Math.min(r, g, b),
+    d = mx - mn;
+  const l = (mx + mn) / 2;
+  let h = 0,
+    s = 0;
+  if (d !== 0) {
+    s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    if (mx === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (mx === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return { h, s, l };
+}
+
 /**
- * Score a guess against a target (given as precomputed OKLab) as a percentage 0..100.
- * score = round(100 * exp(-K_FALLOFF * dist^K_POWER)), clamped to 0..100.
- * The power (>1) makes near guesses generous while keeping far misses low.
+ * Score a guess against a target as a percentage 0..100, using a weighted HSL
+ * distance (hue dominant, saturation next, lightness least). See the weight
+ * constants above for the rationale. Both args are "#RRGGBB" hex strings.
  */
-export function scoreGuess(guessHex: string, targetOklab: Oklab): number {
-  const dist = oklabDistance(hexToOklab(guessHex), targetOklab);
-  const raw = Math.round(100 * Math.exp(-K_FALLOFF * Math.pow(dist, K_POWER)));
+export function scoreGuess(guessHex: string, targetHex: string): number {
+  const a = hexToHsl(guessHex);
+  const b = hexToHsl(targetHex);
+  let dh = Math.abs(a.h - b.h);
+  if (dh > 180) dh = 360 - dh;
+  dh /= 180; // normalize 0..1
+  const ds = Math.abs(a.s - b.s);
+  const dl = Math.abs(a.l - b.l);
+  const minSat = Math.min(a.s, b.s); // hue only matters if both are saturated
+  const penalty = HUE_W * dh * minSat + SAT_W * ds + LUM_W * dl;
+  const raw = Math.round(100 * Math.exp(-SCORE_K * penalty));
   return Math.max(0, Math.min(100, raw));
 }
 

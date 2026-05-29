@@ -363,7 +363,7 @@ export class GameRoom implements DurableObject {
     // Compute the score now so the reveal is instant; withhold from others.
     let score: number;
     try {
-      score = scoreGuess(hex, this.targetOklab);
+      score = scoreGuess(hex, this.target);
     } catch {
       this.send(ws, { type: 'guess_ack', accepted: false });
       return;
@@ -489,7 +489,7 @@ export class GameRoom implements DurableObject {
       const score =
         typeof sub.score === 'number'
           ? sub.score
-          : safeScore(sub.hex, this.targetOklab);
+          : safeScore(sub.hex, this.target);
 
       rec.total += score;
       rec.rounds += 1; // only counts rounds actually submitted
@@ -678,7 +678,7 @@ export class GameRoom implements DurableObject {
       const score =
         typeof sub.score === 'number'
           ? sub.score
-          : safeScore(sub.hex, this.targetOklab);
+          : safeScore(sub.hex, this.target);
       results.push({ playerId, name: rec.name, guess: sub.hex, score, rank: 0 });
     }
     results.sort((x, y) => y.score - x.score || x.name.localeCompare(y.name));
@@ -817,9 +817,9 @@ export class GameRoom implements DurableObject {
 // Module helpers
 // ---------------------------------------------------------------------------
 
-function safeScore(hex: string, targetOklab: Oklab): number {
+function safeScore(hex: string, targetHex: string): number {
   try {
-    return scoreGuess(hex, targetOklab);
+    return scoreGuess(hex, targetHex);
   } catch {
     return 0;
   }

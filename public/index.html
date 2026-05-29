@@ -324,15 +324,34 @@
   .pr-pausebtn{position:absolute;top:18px;left:18px;z-index:5}
   .paused-badge{display:none;font-weight:800;letter-spacing:.12em;color:var(--honey);text-transform:uppercase;font-size:12px}
   body.paused .paused-badge{display:inline}
-  /* last-round recap */
-  .recap{display:flex;align-items:center;gap:12px;padding:11px 13px}
-  .recap .rc-sw{display:flex;flex:none}
-  .recap .rc-sw i{display:block;width:34px;height:34px;border-radius:8px;border:1px solid var(--line2)}
-  .recap .rc-sw i+i{margin-left:-8px}
-  .recap .rc-body{min-width:0;flex:1}
-  .recap .rc-head{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);font-weight:800;margin-bottom:2px}
-  .recap .rc-line{font-size:13px;color:var(--ink)}
-  .recap .rc-line b{font-weight:800}
+  /* last-round recap — your guess vs the truth, broken down per RGB channel */
+  .recap{display:block;padding:14px 15px}
+  .rc-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);font-weight:800;margin-bottom:11px}
+  .rc-head .rc-legend{display:flex;gap:11px;letter-spacing:.04em}
+  .rc-head .rc-legend i{font-style:normal;display:inline-flex;align-items:center;gap:4px}
+  .rc-legend .k-real{width:2px;height:11px;background:#fff;border-radius:2px;display:inline-block;box-shadow:0 0 4px rgba(255,255,255,.6)}
+  .rc-legend .k-you{width:9px;height:9px;border-radius:50%;background:var(--honey);display:inline-block}
+  .rc-top{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+  .rc-pair{display:flex;align-items:center;gap:9px;min-width:0}
+  .rc-chip{width:34px;height:34px;border-radius:9px;border:1px solid var(--line2);flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+  .rc-meta{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+  .rc-hex{font-family:var(--mono,ui-monospace,monospace);font-size:13px;font-weight:800;letter-spacing:.02em;color:var(--ink)}
+  .rc-cap{font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-faint);font-weight:800}
+  .rc-arrow{color:var(--ink-faint);font-size:15px;flex:none}
+  .rc-score{margin-left:auto;text-align:right;flex:none}
+  .rc-score b{font-weight:800;font-size:20px;line-height:1;color:var(--honey);font-variant-numeric:tabular-nums}
+  .rc-score span{display:block;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:700;margin-top:2px}
+  .rc-chs{display:flex;flex-direction:column;gap:9px}
+  .rcc{display:grid;grid-template-columns:14px 1fr 40px;align-items:center;gap:11px}
+  .rcc-lbl{font-family:var(--mono,ui-monospace,monospace);font-weight:800;font-size:12px}
+  .rcc-track{position:relative;height:12px;border-radius:7px;background:#13131c;border:1px solid var(--line2);overflow:visible}
+  .rcc-fill{position:absolute;inset:0;border-radius:7px;opacity:.28}
+  .rcc-gap{position:absolute;top:1px;bottom:1px;border-radius:3px;opacity:.62}
+  .rcc-real{position:absolute;top:-2px;bottom:-2px;width:2px;background:#fff;border-radius:2px;transform:translateX(-1px);box-shadow:0 0 5px rgba(255,255,255,.7);z-index:2}
+  .rcc-you{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;background:var(--honey);border:2px solid #1a1300;transform:translate(-50%,-50%);box-shadow:0 1px 5px rgba(0,0,0,.55);z-index:3}
+  .rcc-delta{font-family:var(--mono,ui-monospace,monospace);font-size:12px;font-weight:800;text-align:right;font-variant-numeric:tabular-nums}
+  .recap.sat{display:flex;align-items:center;gap:12px}
+  .recap.sat .rc-chip{width:30px;height:30px}
   .pr-recap{margin:4px 0 12px;padding:11px 13px;border:1px solid var(--line2);border-radius:13px;background:var(--bg)}
   .pr-recap .h{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:800;margin-bottom:7px}
   .pr-recap .row{display:flex;align-items:center;gap:9px;font-size:15px;margin:4px 0}
@@ -468,13 +487,7 @@
         <div class="idle-note"><span class="bz">🐝</span><span>The hive is napping. The next round starts the moment someone shows up — hang tight…</span></div>
       </div>
 
-      <div class="card recap" id="pl-recap" style="display:none">
-        <div class="rc-sw"><i id="pl-recap-real"></i><i id="pl-recap-guess"></i></div>
-        <div class="rc-body">
-          <div class="rc-head" id="pl-recap-head">Last round</div>
-          <div class="rc-line" id="pl-recap-line">—</div>
-        </div>
-      </div>
+      <div class="card recap" id="pl-recap" style="display:none"></div>
 
       <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:600">Leaderboard</div>
       <div class="card" style="padding:8px 8px"><div class="lb" id="pl-lb"><div class="lb-empty">No players yet.</div></div></div>
@@ -519,6 +532,8 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<!-- Charlie, the RGBee host (Tavus). Self-positions bottom-right; only mounted in presentation mode. -->
+<script src="https://unpkg.com/@tavus/widget@beta"></script>
 <script>
 "use strict";
 /* ============================================================================
@@ -527,7 +542,7 @@
    ========================================================================== */
 
 /* ---------------- OKLab + scoring (mirror of src/oklab.ts) ---------------- */
-const K_FALLOFF = 23, K_POWER = 3;
+const K_FALLOFF = 4, K_POWER = 1.8;
 function clamp01(c){ return c<0?0:c>1?1:c; }
 function srgbToLinear(c){ return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); }
 function parseHex(hex){
@@ -972,6 +987,30 @@ function submitGuess(auto){
   if(auto) toast('⏱ time! auto-locked your guess');
 }
 
+// Per-channel R/G/B breakdown: tinted 0-255 track, white tick = true value,
+// honey dot = your value, shaded error span, signed delta colored by closeness.
+function rgbChannelBars(real, you){
+  if(!real || !you) return '';
+  const chans=[['R',0,'#ff5b6e'],['G',1,'#43d17f'],['B',2,'#5b9bff']];
+  return chans.map(function(c){
+    const lbl=c[0], i=c[1], col=c[2];
+    const rv=real[i], yv=you[i], d=yv-rv, ad=Math.abs(d);
+    const rp=rv/255*100, yp=yv/255*100, lo=Math.min(rp,yp), w=Math.abs(rp-yp);
+    const dcol = ad<=12?'#7fe0a3':(ad<=45?'var(--honey)':'var(--bad)');
+    const sign = d>0?'+':(d<0?'−':'±');
+    return '<div class="rcc">'+
+      '<span class="rcc-lbl" style="color:'+col+'">'+lbl+'</span>'+
+      '<div class="rcc-track">'+
+        '<div class="rcc-fill" style="background:linear-gradient(90deg,#0b0b12,'+col+')"></div>'+
+        '<div class="rcc-gap" style="left:'+lo+'%;width:'+w+'%;background:'+col+'"></div>'+
+        '<div class="rcc-real" style="left:'+rp+'%"></div>'+
+        '<div class="rcc-you" style="left:'+yp+'%"></div>'+
+      '</div>'+
+      '<span class="rcc-delta" style="color:'+dcol+'">'+sign+ad+'</span>'+
+    '</div>';
+  }).join('');
+}
+
 // Last-round recap (player + presentation), shown during the next round.
 function renderRecap(){
   const lr = state.lastRound;
@@ -980,16 +1019,27 @@ function renderRecap(){
   if(pr){
     if(show && state.role==='player'){
       pr.style.display='';
-      $('pl-recap-real').style.background = normHex(lr.target);
       const mine = state.you ? lr.results.find(r=>r.playerId===state.you.playerId) : null;
-      const gEl=$('pl-recap-guess');
-      $('pl-recap-head').textContent = 'Round '+lr.round+' · last round';
       if(mine){
-        gEl.style.display=''; gEl.style.background=normHex(mine.guess);
-        $('pl-recap-line').innerHTML = 'real '+normHex(lr.target).toUpperCase()+' · you <b>'+mine.score+'%</b> · rank #'+mine.rank+' of '+lr.results.length;
+        pr.className='card recap';
+        pr.innerHTML =
+          '<div class="rc-head"><span>Round '+lr.round+' · how you did</span>'+
+            '<span class="rc-legend"><i><span class="k-real"></span>true</i><i><span class="k-you"></span>you</i></span></div>'+
+          '<div class="rc-top">'+
+            '<div class="rc-pair"><span class="rc-chip" style="background:'+normHex(lr.target)+'"></span>'+
+              '<span class="rc-meta"><span class="rc-hex">'+normHex(lr.target).toUpperCase()+'</span><span class="rc-cap">real color</span></span></div>'+
+            '<span class="rc-arrow">→</span>'+
+            '<div class="rc-pair"><span class="rc-chip" style="background:'+normHex(mine.guess)+'"></span>'+
+              '<span class="rc-meta"><span class="rc-hex">'+normHex(mine.guess).toUpperCase()+'</span><span class="rc-cap">your guess</span></span></div>'+
+            '<div class="rc-score"><b>'+mine.score+'%</b><span>rank #'+mine.rank+'/'+lr.results.length+'</span></div>'+
+          '</div>'+
+          '<div class="rc-chs">'+rgbChannelBars(parseHex(lr.target), parseHex(mine.guess))+'</div>';
       } else {
-        gEl.style.display='none';
-        $('pl-recap-line').innerHTML = 'real '+normHex(lr.target).toUpperCase()+' · you sat it out';
+        pr.className='card recap sat';
+        pr.innerHTML =
+          '<span class="rc-chip" style="background:'+normHex(lr.target)+'"></span>'+
+          '<div class="rc-meta"><span class="rc-hex">'+normHex(lr.target).toUpperCase()+'</span>'+
+            '<span class="rc-cap">round '+lr.round+' · you sat it out</span></div>';
       }
     } else pr.style.display='none';
   }
@@ -1145,12 +1195,29 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':
 /* ============================================================================
    View routing / role switching
    ========================================================================== */
+// Charlie the host (Tavus widget) — only mounted on the presentation screen,
+// never on players' phones. The widget self-positions bottom-right.
+const CHARLIE_DEPLOYMENT='1d95008e-f130-44e7-94fc-59f6ed955734';
+function setCharlie(on){
+  let el=document.getElementById('charlie-widget');
+  if(on){
+    if(!el){
+      el=document.createElement('tavus-widget');
+      el.id='charlie-widget';
+      el.setAttribute('deployment-id', CHARLIE_DEPLOYMENT);
+      document.body.appendChild(el);
+    }
+  } else if(el){
+    el.remove();
+  }
+}
 function goLanding(){
   state.role='landing'; LS.mode='';
   $('topbar').style.display='';
   show('view-landing');
   $('name-input').value = LS.name||'';
   refreshJoinCard();
+  setCharlie(false);
   renderAll();
 }
 function goPlayer(name){
@@ -1160,6 +1227,7 @@ function goPlayer(name){
   show('view-player');
   // Stored playerId is authoritative server-side, so rejoining never dupes.
   send({type:'join', name: LS.name, playerId: LS.pid||undefined});
+  setCharlie(false);
   renderAll();
 }
 // Frictionless rejoin: if we've played before, offer one-tap "Continue as {name}".
@@ -1174,6 +1242,7 @@ function goPresent(){
   show('view-present');
   send({type:'watch'});
   qrDone=false; makeQR();
+  setCharlie(true);
   renderAll();
 }
 
@@ -1232,7 +1301,7 @@ function boot(){
   else { state.role='landing'; $('name-input').value=LS.name||''; refreshJoinCard(); }
   connect();
   requestAnimationFrame(tick);
-  if(state.role==='present') makeQR();
+  if(state.role==='present'){ makeQR(); setCharlie(true); }
 }
 boot();
 </script>
