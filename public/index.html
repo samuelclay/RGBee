@@ -1075,7 +1075,7 @@ function renderCompactLB(host, lb){
     row.innerHTML =
       '<span class="rank">'+(medal(i+1)||(i+1))+'</span>'+
       '<span class="nm"><span class="conn-dot'+(p.connected?'':' off')+'"></span>'+escapeHtml(p.name)+'</span>'+
-      '<span><span class="sc">'+(p.rankedScore==null?'—':Math.round(p.rankedScore)+'%')+'</span> <span class="sub">'+(p.rounds?p.rounds+'r':'new')+'</span></span>';
+      '<span><span class="sc">'+(p.rankedScore==null?'—':Math.round(p.rankedScore)+'%')+'</span> <span class="sub">'+(p.rounds?p.rounds+(p.rounds===1?' round':' rounds'):'new')+'</span></span>';
     host.appendChild(row);
   });
 }
