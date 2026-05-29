@@ -342,6 +342,8 @@
   .charlie .charlie-tag{position:absolute;left:9px;bottom:9px;font-size:12px;font-weight:800;color:#fff;background:rgba(0,0,0,.5);padding:3px 9px;border-radius:9px;backdrop-filter:blur(4px)}
   .charlie .charlie-msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;font-weight:800;color:var(--ink-faint);font-size:13px;padding:12px}
   .charlie .charlie-msg span{font-family:var(--mono);font-size:11px;color:var(--honey);font-weight:700}
+  .charlie .charlie-unmute{position:absolute;top:9px;right:9px;border:0;background:var(--honey);color:#1a1300;font:inherit;font-weight:800;font-size:12px;padding:5px 10px;border-radius:9px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4);animation:charliePulse 1.6s ease-in-out infinite}
+  @keyframes charliePulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
   /* last-round recap — your guess vs the truth, broken down per RGB channel */
   .recap{display:block;padding:14px 15px}
   .rc-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);font-weight:800;margin-bottom:11px}
@@ -565,8 +567,9 @@
 </div>
 
 <div class="charlie" id="charlie" style="display:none">
-  <video id="charlie-video" autoplay playsinline></video>
+  <video id="charlie-video" autoplay playsinline muted></video>
   <div class="charlie-msg" id="charlie-msg">Charlie is offline<br><span>set TAVUS_API_KEY</span></div>
+  <button class="charlie-unmute" id="charlie-unmute" style="display:none">🔊 tap for Charlie</button>
   <div class="charlie-tag">🎙️ Charlie</div>
 </div>
 
@@ -1285,6 +1288,7 @@ function charlieTile(mode){ // 'video' | 'offline' | 'hidden'
   el.style.display = mode==='hidden' ? 'none' : '';
   $('charlie-msg').style.display = mode==='offline' ? '' : 'none';
   $('charlie-video').style.display = mode==='video' ? '' : 'none';
+  const b=$('charlie-unmute'); if(b && mode!=='video') b.style.display='none';
 }
 
 async function startCharlie(){
@@ -1317,13 +1321,25 @@ function stopCharlie(){
   if(id){ fetch('/charlie/end',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({conversation_id:id})}).catch(()=>{}); }
 }
 
+// Try to play Charlie with sound; if the browser blocks autoplay-with-audio
+// (no fresh user gesture), fall back to muted video + a one-tap unmute prompt.
+function playCharlie(){
+  const v=$('charlie-video'); if(!v) return;
+  v.muted=false;
+  const p=v.play&&v.play();
+  if(p&&p.catch) p.catch(()=>{
+    v.muted=true; const q=v.play&&v.play(); if(q&&q.catch) q.catch(()=>{});
+    const b=$('charlie-unmute'); if(b) b.style.display='';
+  });
+}
+
 // Render the replica's (remote) video + audio into the Charlie tile.
 function onCharlieTrack(ev){
   if(!ev || !ev.participant || ev.participant.local || !ev.track) return;
   const v=$('charlie-video'); if(!v) return;
   if(!(v.srcObject instanceof MediaStream)) v.srcObject=new MediaStream();
   try{ v.srcObject.addTrack(ev.track); }catch(e){}
-  v.muted=false; const p=v.play&&v.play(); if(p&&p.catch) p.catch(()=>{});
+  playCharlie();
   // First time Charlie's video appears, greet the room and hand him context.
   if(!charlie.greeted && ev.track.kind==='video'){
     charlie.greeted=true;
@@ -1454,6 +1470,12 @@ window.addEventListener('keydown', e=>{
 function togglePause(){ send({type: state.paused?'resume':'pause'}); }
 $('pause-btn').addEventListener('click', togglePause);
 $('pr-pause-btn').addEventListener('click', togglePause);
+// Charlie: one-tap unmute (satisfies the browser's gesture requirement for audio).
+$('charlie-unmute').addEventListener('click', ()=>{
+  const v=$('charlie-video'); if(!v) return;
+  v.muted=false; const p=v.play&&v.play(); if(p&&p.catch) p.catch(()=>{});
+  $('charlie-unmute').style.display='none';
+});
 
 /* ============================================================================
    Boot
