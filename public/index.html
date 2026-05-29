@@ -194,6 +194,12 @@
   .ring-row .phase-label{font-size:13px;color:var(--ink-dim);font-weight:600}
   .ring-row .phase-sub{font-size:12px;color:var(--ink-faint)}
 
+  #pl-extra{display:flex;flex-direction:column;gap:clamp(9px,1.6vw,15px)}
+  /* keyboard open (hex input focused): collapse to a color strip + essentials so
+     the color, input and lock-in all stay visible above the soft keyboard. */
+  body.kb #view-player .big-swatch{height:60px;min-height:60px}
+  body.kb #view-player .big-swatch .qmark{font-size:34px}
+  body.kb #pl-extra{display:none}
   .guess-card{padding:clamp(12px,2vw,18px);display:flex;flex-direction:column;gap:11px}
   .hex-input-row{display:flex;align-items:stretch;gap:10px}
   .hex-prefix{
@@ -539,12 +545,14 @@
         <div class="idle-note"><span class="bz">🐝</span><span>The hive is napping. The next round starts the moment someone shows up — hang tight…</span></div>
       </div>
 
-      <div class="card recap" id="pl-recap" style="display:none"></div>
+      <div id="pl-extra">
+        <div class="card recap" id="pl-recap" style="display:none"></div>
 
-      <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:600">Leaderboard <span class="live-count" id="pl-live"></span></div>
-      <div class="card" style="padding:8px 8px"><div class="lb" id="pl-lb"><div class="lb-empty">No players yet.</div></div></div>
+        <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:600">Leaderboard <span class="live-count" id="pl-live"></span></div>
+        <div class="card" style="padding:8px 8px"><div class="lb" id="pl-lb"><div class="lb-empty">No players yet.</div></div></div>
 
-      <div style="text-align:center"><button class="leave" id="pl-leave">← back to landing</button></div>
+        <div style="text-align:center"><button class="leave" id="pl-leave">← back to landing</button></div>
+      </div>
     </div>
   </section>
 
@@ -1057,6 +1065,8 @@ function submitGuess(auto){
   state.myGuess = hex.replace('#','');
   state.autoLocked = true;        // block double-send until guess_ack
   send({type:'guess', hex});
+  const hi=$('hex-input'); if(hi) hi.blur(); // dismiss keyboard + exit kb mode
+  document.body.classList.remove('kb');
   if(auto) toast('⏱ time! auto-locked your guess');
 }
 
@@ -1405,9 +1415,12 @@ function nearestColorName(hex){
 // Game → Charlie: keep him aware and let him host.
 function charlieOnRoundStart(){
   if(!charlie.call) return;
-  const n = (state.leaderboard||[]).filter(p=>p.connected).length;
+  const liveNames = (state.leaderboard||[]).filter(p=>p.connected).map(p=>p.name);
+  const n = liveNames.length;
   const cname = nearestColorName(state.color);
-  charlieRespond('[RGBee] Round '+state.round+' is live — a fresh color is on the big screen (closest named color: "'+cname+'") and '+n+' player'+(n===1?' is':'s are')+' in. Give ONE short, punchy hype line and feel free to describe the color by that name (e.g. "ooh, a gorgeous '+cname+'!"). Do NOT say any hex code or read out digits.');
+  // Silent awareness of exactly who's live so he can name-drop occasionally.
+  charlieAppend('[RGBee] '+n+' player'+(n===1?'':'s')+' live right now'+(n?': '+liveNames.join(', ')+'.':'.')+' You may OCCASIONALLY greet or shout out a live player by name — keep it natural, not every round.');
+  charlieRespond('[RGBee] Round '+state.round+' is live — a fresh color is on the big screen (closest named color: "'+cname+'"). Give ONE short, punchy hype line and describe the color by that name (e.g. "a gorgeous '+cname+'!"). Every so often you can call out one of the live players by name. Do NOT say any hex code or read out digits.');
 }
 function charlieOnReveal(){
   if(!charlie.call) return;
@@ -1475,6 +1488,16 @@ $('hex-input').addEventListener('input', e=>{
   state.touched=true;
   updateEstimate();
 });
+// Keyboard-open mode: collapse the swatch + hide extras so color/input/lock-in
+// all stay visible above the soft keyboard.
+$('hex-input').addEventListener('focus', ()=>{
+  document.body.classList.add('kb');
+  setTimeout(()=>window.scrollTo(0,0), 60);
+});
+$('hex-input').addEventListener('blur', ()=>{ document.body.classList.remove('kb'); });
+// Lock-in submits on pointer-down (before the input blurs), and preventDefault
+// keeps the keyboard from dismissing/reflowing before the tap registers.
+$('submit-btn').addEventListener('pointerdown', e=>{ e.preventDefault(); submitGuess(false); });
 // input-mode selector (Hex / RGB% / HSL)
 $('mode-seg').addEventListener('click', e=>{
   const btn=e.target.closest('button[data-mode]'); if(!btn) return;
