@@ -1364,8 +1364,10 @@ function onCharlieTrack(ev){
     charlie.greeted=true;
     setTimeout(()=>{
       const n=(state.leaderboard||[]).filter(p=>p.connected).length;
-      charlieAppend('[RGBee] You are live on the big screen of an ongoing game. Currently round '+state.round+', '+n+' player'+(n===1?'':'s')+' in.');
-      charlieRespond('[RGBee] Welcome to RGBee! Introduce yourself fast and warm as the host Charlie, tell people to scan the QR code on screen to join from their phones, then get into hosting the live round.');
+      const live = state.phase==='guess' && state.color;
+      const cname = live ? nearestColorName(state.color) : '';
+      charlieAppend('[RGBee] You are joining an ongoing game mid-stream (round '+state.round+', '+n+' player'+(n===1?'':'s')+' in).'+(live?(' A color is ALREADY on the big screen right now — closest named color: "'+cname+'".'):''));
+      charlieRespond('[RGBee] Welcome to RGBee! Introduce yourself fast and warm as the host Charlie and tell people to scan the QR on screen to join.'+(live?(' Note: a round is already in progress and the color is up on the board right now — call it out (it\'s about a "'+cname+'") and hype the room to guess it. Do NOT say any hex code or digits.'):' Then get into hosting the live round.'));
     }, 900);
   }
 }
