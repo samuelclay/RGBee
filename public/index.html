@@ -324,6 +324,12 @@
   .pr-pausebtn{position:absolute;top:18px;left:18px;z-index:5}
   .paused-badge{display:none;font-weight:800;letter-spacing:.12em;color:var(--honey);text-transform:uppercase;font-size:12px}
   body.paused .paused-badge{display:inline}
+  /* Charlie the host video (presentation only, bottom-right) */
+  .charlie{position:fixed;right:20px;bottom:20px;width:min(240px,28vw);aspect-ratio:1;border-radius:20px;overflow:hidden;background:#08080c;border:2px solid var(--honey);box-shadow:0 14px 48px rgba(0,0,0,.6),0 0 0 1px rgba(255,201,60,.2);z-index:60}
+  .charlie video{width:100%;height:100%;object-fit:cover;display:block}
+  .charlie .charlie-tag{position:absolute;left:9px;bottom:9px;font-size:12px;font-weight:800;color:#fff;background:rgba(0,0,0,.5);padding:3px 9px;border-radius:9px;backdrop-filter:blur(4px)}
+  .charlie .charlie-msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;font-weight:800;color:var(--ink-faint);font-size:13px;padding:12px}
+  .charlie .charlie-msg span{font-family:var(--mono);font-size:11px;color:var(--honey);font-weight:700}
   /* last-round recap — your guess vs the truth, broken down per RGB channel */
   .recap{display:block;padding:14px 15px}
   .rc-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);font-weight:800;margin-bottom:11px}
@@ -546,11 +552,18 @@
   </section>
 </div>
 
+<div class="charlie" id="charlie" style="display:none">
+  <video id="charlie-video" autoplay playsinline></video>
+  <div class="charlie-msg" id="charlie-msg">Charlie is offline<br><span>set TAVUS_API_KEY</span></div>
+  <div class="charlie-tag">🎙️ Charlie</div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-<!-- Charlie, the RGBee host (Tavus). Self-positions bottom-right; only mounted in presentation mode. -->
-<script src="https://unpkg.com/@tavus/widget@beta"></script>
+<!-- Charlie the RGBee host: we join his Tavus CVI conversation with daily-js so
+     we can render him AND push/pull app-messages (round + leaderboard awareness). -->
+<script src="https://unpkg.com/@daily-co/daily-js"></script>
 <script>
 "use strict";
 /* ============================================================================
@@ -726,6 +739,7 @@ function handle(msg){
       if(state.you) state.you.submittedThisRound=false;
       clearGuessInput();           // wipe last round's guess from the input
       renderAll();
+      if(state.role==='present') charlieOnRoundStart();
       break;
     }
     case 'reveal':{
@@ -736,6 +750,7 @@ function handle(msg){
       state.revealEndsAt=msg.revealEndsAt; state.deadline=0;
       state.paused=false; state.pausedRemaining=0;
       renderAll();
+      if(state.role==='present') charlieOnReveal();
       break;
     }
     case 'paused':{
@@ -1234,21 +1249,102 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':
 /* ============================================================================
    View routing / role switching
    ========================================================================== */
-// Charlie the host (Tavus widget) — only mounted on the presentation screen,
-// never on players' phones. The widget self-positions bottom-right.
-const CHARLIE_DEPLOYMENT='1d95008e-f130-44e7-94fc-59f6ed955734';
-function setCharlie(on){
-  let el=document.getElementById('charlie-widget');
-  if(on){
-    if(!el){
-      el=document.createElement('tavus-widget');
-      el.id='charlie-widget';
-      el.setAttribute('deployment-id', CHARLIE_DEPLOYMENT);
-      document.body.appendChild(el);
-    }
-  } else if(el){
-    el.remove();
+/* ============================================================================
+   Charlie the host — Tavus CVI joined via daily-js (presentation screen only).
+   We render his video AND push/pull app-messages so he narrates the rounds,
+   leaderboard, and the progressive 1st→2nd→3rd reveal.
+   ========================================================================== */
+const charlie = { call:null, conversationId:null, starting:false, speaking:false, joined:false, greeted:false };
+
+function setCharlie(on){ if(on) startCharlie(); else stopCharlie(); }
+
+function charlieTile(mode){ // 'video' | 'offline' | 'hidden'
+  const el=$('charlie'); if(!el) return;
+  el.style.display = mode==='hidden' ? 'none' : '';
+  $('charlie-msg').style.display = mode==='offline' ? '' : 'none';
+  $('charlie-video').style.display = mode==='video' ? '' : 'none';
+}
+
+async function startCharlie(){
+  const D = window.Daily || window.DailyIframe;
+  if(charlie.call || charlie.starting || !D) return;
+  charlie.starting=true;
+  try{
+    const res = await fetch('/charlie/start',{method:'POST'});
+    if(!res.ok){ charlieTile('offline'); charlie.starting=false; return; }
+    const data = await res.json();
+    charlie.conversationId = data.conversation_id;
+    const call = D.createCallObject({ subscribeToTracksAutomatically:true });
+    charlie.call = call;
+    call.on('track-started', onCharlieTrack);
+    call.on('app-message', onCharlieAppMessage);
+    call.on('left-meeting', ()=>{ charlie.joined=false; });
+    await call.join({ url:data.conversation_url, userName:'RGBee Screen', startVideoOff:true, startAudioOff:true });
+    charlie.joined=true;
+    charlieTile('video');
+  }catch(e){ console.warn('[charlie] start failed', e); charlieTile('offline'); }
+  charlie.starting=false;
+}
+
+function stopCharlie(){
+  charlieTile('hidden');
+  const call=charlie.call, id=charlie.conversationId;
+  charlie.call=null; charlie.conversationId=null; charlie.speaking=false; charlie.joined=false; charlie.greeted=false;
+  const v=$('charlie-video'); if(v) v.srcObject=null;
+  if(call){ try{ call.leave(); call.destroy(); }catch(e){} }
+  if(id){ fetch('/charlie/end',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({conversation_id:id})}).catch(()=>{}); }
+}
+
+// Render the replica's (remote) video + audio into the Charlie tile.
+function onCharlieTrack(ev){
+  if(!ev || !ev.participant || ev.participant.local || !ev.track) return;
+  const v=$('charlie-video'); if(!v) return;
+  if(!(v.srcObject instanceof MediaStream)) v.srcObject=new MediaStream();
+  try{ v.srcObject.addTrack(ev.track); }catch(e){}
+  v.muted=false; const p=v.play&&v.play(); if(p&&p.catch) p.catch(()=>{});
+  // First time Charlie's video appears, greet the room and hand him context.
+  if(!charlie.greeted && ev.track.kind==='video'){
+    charlie.greeted=true;
+    setTimeout(()=>{
+      const n=(state.leaderboard||[]).filter(p=>p.connected).length;
+      charlieAppend('[RGBee] You are live on the big screen of an ongoing game. Currently round '+state.round+', '+n+' player'+(n===1?'':'s')+' in.');
+      charlieRespond('[RGBee] Welcome to RGBee! Introduce yourself fast and warm as the host Charlie, tell people to scan the QR code on screen to join from their phones, then get into hosting the live round.');
+    }, 900);
   }
+}
+
+// PULL: observe conversation events coming back from the replica.
+function onCharlieAppMessage(ev){
+  const m = ev && ev.data;
+  if(!m || m.message_type!=='conversation') return;
+  const et = m.event_type||'';
+  if(et==='conversation.replica.started_speaking') charlie.speaking=true;
+  else if(et==='conversation.replica.stopped_speaking') charlie.speaking=false;
+}
+
+// PUSH helpers — send interactions over the Daily data channel.
+function charlieSend(eventType, properties){
+  if(!charlie.call || !charlie.conversationId) return false;
+  try{
+    charlie.call.sendAppMessage({ message_type:'conversation', event_type:eventType, conversation_id:charlie.conversationId, properties }, '*');
+    return true;
+  }catch(e){ return false; }
+}
+function charlieAppend(text){ return charlieSend('conversation.append_llm_context', {context:text}); }
+function charlieRespond(text){ return charlieSend('conversation.respond', {text}); }
+
+// Game → Charlie: keep him aware and let him host.
+function charlieOnRoundStart(){
+  if(!charlie.call) return;
+  const n = (state.leaderboard||[]).filter(p=>p.connected).length;
+  charlieRespond('[RGBee] Round '+state.round+' is live — a fresh color just hit the big screen and '+n+' player'+(n===1?' is':'s are')+' in. Give ONE short, punchy hype line for the room. Do NOT reveal or guess the color, and do not announce any results yet.');
+}
+function charlieOnReveal(){
+  if(!charlie.call) return;
+  const res = (state.results||[]).slice(0,3);
+  const podium = res.length ? res.map((r,i)=>(i+1)+') '+r.name+' '+r.score+'%').join(', ') : 'nobody guessed';
+  charlieAppend('[RGBee] Live leaderboard right now: '+(state.leaderboard||[]).slice(0,5).map(p=>p.name+' '+(p.rankedScore==null?'new':Math.round(p.rankedScore)+'%')).join(', ')+'.');
+  charlieRespond('[RGBee] Round '+state.round+' is over. The real color was '+normHex(state.target).toUpperCase()+'. Podium — '+podium+'. Announce it PROGRESSIVELY and dramatically: the winner first with how close they were, then second place, then third place, then stop. Keep the whole thing tight.');
 }
 function goLanding(){
   state.role='landing'; LS.mode='';
