@@ -368,6 +368,7 @@
       <span class="bee-mascot" style="font-size:1.05em;margin-right:.18em">🐝</span><span class="hash">#</span><span class="rgb-stripes"><span class="s-r">R</span><span class="s-g">G</span><span class="s-b">B</span></span><span class="bee">ee</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
+      <span class="paused-badge" id="paused-badge"></span>
       <button class="pausebtn" id="pause-btn" title="Anyone can pause the game">⏸ Pause</button>
       <div class="pill" id="status-pill"><span class="dot" id="conn-dot"></span><span id="status-text">connecting…</span></div>
     </div>
@@ -460,7 +461,6 @@
           </div>
         </div>
 
-        <p style="font-size:12px;color:var(--ink-faint);text-align:center;margin:2px 0 0">No preview, no score — guess blind. Closest eye wins. 🐝</p>
         <button class="btn btn-primary" id="submit-btn" disabled>Lock in guess</button>
       </div>
 
@@ -480,6 +480,7 @@
           <div class="big" id="pl-rv-score">0</div>
           <div class="rk" id="pl-rv-rank">—</div>
         </div>
+        <div class="rc-chs" id="pl-rv-chs" style="margin-top:14px"></div>
       </div>
 
       <!-- idle state -->
@@ -619,7 +620,7 @@ const state = {
   offset:0,                       // serverNow - clientNow
   phase:'idle', round:0,
   color:null, target:null, deadline:0, revealEndsAt:0,
-  paused:false, pausedRemaining:0,
+  paused:false, pausedRemaining:0, pausedBy:null,
   inputMode:'hex',                // 'hex' | 'rgb' | 'hsl'
   leaderboard:[], results:null,
   you:null,                       // {playerId,name,submittedThisRound}
@@ -682,7 +683,7 @@ function handle(msg){
       syncClock(msg.serverNow);
       state.phase=msg.phase; state.round=msg.round; state.color=msg.color;
       state.deadline=msg.deadline||0; state.revealEndsAt=msg.revealEndsAt||0;
-      state.paused=!!msg.paused; state.pausedRemaining=msg.remainingMs||0;
+      state.paused=!!msg.paused; state.pausedRemaining=msg.remainingMs||0; state.pausedBy=msg.pausedBy||null;
       state.leaderboard=msg.leaderboard||[];
       state.results=msg.results||null; state.target=msg.target||null;
       if(msg.lastRound!==undefined) state.lastRound=msg.lastRound;
@@ -725,9 +726,10 @@ function handle(msg){
       syncClock(msg.serverNow);
       state.paused=!!msg.paused;
       state.pausedRemaining=msg.remainingMs||0;
+      state.pausedBy=msg.pausedBy||null;
       if(typeof msg.deadline==='number') state.deadline=msg.deadline;
       if(typeof msg.revealEndsAt==='number') state.revealEndsAt=msg.revealEndsAt;
-      toast(state.paused?'⏸ Game paused':'▶ Resumed');
+      toast(state.paused?('⏸ Paused by '+(state.pausedBy||'someone')):'▶ Resumed');
       break;
     }
     case 'leaderboard':{
@@ -784,6 +786,7 @@ function tick(){
   const plabel = paused?'▶ Resume':'⏸ Pause';
   const pb=$('pause-btn'); if(pb) pb.textContent=plabel;
   const ppb=$('pr-pause-btn'); if(ppb) ppb.textContent=plabel;
+  const badge=$('paused-badge'); if(badge) badge.textContent = paused?('⏸ paused by '+(state.pausedBy||'someone')):'';
 
   // LANDING mini
   if(state.role==='landing'){
@@ -815,7 +818,7 @@ function tick(){
   if(state.role==='present'){
     $('pr-cnum').textContent = paused?'❚❚':(state.phase==='idle'?'·':secs);
     const clbl=$('pr-clbl');
-    if(paused) clbl.innerHTML='paused';
+    if(paused) clbl.innerHTML='paused by<br>'+escapeHtml(state.pausedBy||'someone');
     else if(state.phase==='guess') clbl.innerHTML='seconds<br>to guess';
     else if(state.phase==='reveal') clbl.innerHTML='next round<br>incoming';
     else clbl.innerHTML='waiting for<br>players';
@@ -908,6 +911,7 @@ function renderPlayer(){
       const rk = mine.rank, n=state.results.length;
       let crown = rk===1?'🏆 ':'';
       $('pl-rv-rank').innerHTML = crown+'rank <b>#'+rk+'</b> of '+n;
+      $('pl-rv-chs').innerHTML = rgbChannelBars(parseHex(state.target), parseHex(mine.guess));
     } else {
       gEl.style.backgroundColor='#1d1d29';
       $('pl-rv-guess-cap').textContent='no guess';
@@ -915,6 +919,7 @@ function renderPlayer(){
       gEl.querySelector('.tag').style.color='rgba(255,255,255,.85)';
       $('pl-rv-score').textContent='—';
       $('pl-rv-rank').textContent='you sat this one out';
+      $('pl-rv-chs').innerHTML='';
     }
     return;
   }

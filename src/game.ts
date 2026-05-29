@@ -81,6 +81,7 @@ export class GameRoom implements DurableObject {
   private revealEndsAt = 0;
   private paused = false;
   private pausedRemaining = 0; // ms left on the active timer at pause time
+  private pausedBy: string | null = null; // display name of whoever paused
   private submissions = new Map<string, Submission>(); // current round only
   private players = new Map<string, PlayerRecord>();
   // Snapshot of the most recently revealed round, shown during the next round
@@ -111,6 +112,7 @@ export class GameRoom implements DurableObject {
     this.revealEndsAt = (await s.get<number>('revealEndsAt')) ?? 0;
     this.paused = (await s.get<boolean>('paused')) ?? false;
     this.pausedRemaining = (await s.get<number>('pausedRemaining')) ?? 0;
+    this.pausedBy = (await s.get<string | null>('pausedBy')) ?? null;
 
     const subs = await s.get<[string, Submission][]>('submissions');
     this.submissions = new Map(subs ?? []);
@@ -136,6 +138,7 @@ export class GameRoom implements DurableObject {
       revealEndsAt: this.revealEndsAt,
       paused: this.paused,
       pausedRemaining: this.pausedRemaining,
+      pausedBy: this.pausedBy,
       submissions: [...this.submissions.entries()],
       players: [...this.players.entries()],
       lastRound: this.lastRound,
@@ -206,7 +209,7 @@ export class GameRoom implements DurableObject {
         await this.onGuess(ws, msg);
         break;
       case 'pause':
-        await this.onPause();
+        await this.onPause(ws);
         break;
       case 'resume':
         await this.onResume();
@@ -298,19 +301,30 @@ export class GameRoom implements DurableObject {
         ? msg.playerId.trim().slice(0, 64)
         : undefined;
     const existing = this.attachmentOf(ws);
-    const playerId = claimed || existing?.playerId || crypto.randomUUID();
+    let playerId: string | undefined;
+    if (claimed && this.players.has(claimed)) playerId = claimed;
+    else if (existing?.playerId && this.players.has(existing.playerId)) playerId = existing.playerId;
+    else {
+      // No id match — reuse an existing record with the same (case-insensitive)
+      // name so a lost playerId / new device can't create a duplicate entry.
+      const key = name.trim().toLowerCase();
+      for (const [pid, rec] of this.players) {
+        if (rec.name.trim().toLowerCase() === key) { playerId = pid; break; }
+      }
+    }
+    const id: string = playerId ?? claimed ?? crypto.randomUUID();
 
-    const rec = this.players.get(playerId);
+    const rec = this.players.get(id);
     if (rec) {
       rec.name = name; // keep score, update display name
     } else {
-      this.players.set(playerId, { name, total: 0, rounds: 0 });
+      this.players.set(id, { name, total: 0, rounds: 0 });
     }
 
-    ws.serializeAttachment({ playerId, role: 'player' } as Attachment);
+    ws.serializeAttachment({ playerId: id, role: 'player' } as Attachment);
     await this.persist();
 
-    this.send(ws, { type: 'you', playerId, name });
+    this.send(ws, { type: 'you', playerId: id, name });
 
     // Make sure a round is live, then give them the full picture.
     await this.ensureRunning();
@@ -388,7 +402,7 @@ export class GameRoom implements DurableObject {
   // -------------------------------------------------------------------------
 
   /** Freeze the active timer. Cancels the alarm and remembers the time left. */
-  private async onPause(): Promise<void> {
+  private async onPause(ws: WebSocket): Promise<void> {
     if (this.paused) return;
     const now = Date.now();
     if (this.phase === 'guess') {
@@ -398,6 +412,12 @@ export class GameRoom implements DurableObject {
     } else {
       return; // idle: nothing to pause
     }
+    // Who paused? A joined player by name; otherwise a watching screen.
+    const att = this.attachmentOf(ws);
+    this.pausedBy =
+      att?.playerId && this.players.has(att.playerId)
+        ? this.players.get(att.playerId)!.name
+        : 'the presenter';
     this.paused = true;
     await this.ctx.storage.deleteAlarm();
     await this.persist();
@@ -417,6 +437,7 @@ export class GameRoom implements DurableObject {
     }
     this.paused = false;
     this.pausedRemaining = 0;
+    this.pausedBy = null;
     await this.persist();
     this.broadcastPaused(now);
   }
@@ -425,6 +446,7 @@ export class GameRoom implements DurableObject {
     this.broadcast({
       type: 'paused',
       paused: this.paused,
+      pausedBy: this.pausedBy,
       phase: this.phase,
       deadline: this.deadline,
       revealEndsAt: this.revealEndsAt,
@@ -443,6 +465,7 @@ export class GameRoom implements DurableObject {
     // New round always starts unpaused.
     this.paused = false;
     this.pausedRemaining = 0;
+    this.pausedBy = null;
 
     const t = randomTargetColor();
     this.target = t.hex;
@@ -479,6 +502,7 @@ export class GameRoom implements DurableObject {
     // Moving on (incl. skip-to-results while paused): clear any pause.
     this.paused = false;
     this.pausedRemaining = 0;
+    this.pausedBy = null;
 
     // Update cumulative totals for each submitting player and build results.
     const results: ResultEntry[] = [];
@@ -540,6 +564,7 @@ export class GameRoom implements DurableObject {
     this.revealEndsAt = 0;
     this.paused = false;
     this.pausedRemaining = 0;
+    this.pausedBy = null;
     await this.ctx.storage.deleteAlarm();
     await this.persist();
     this.broadcast({
@@ -557,6 +582,7 @@ export class GameRoom implements DurableObject {
     this.revealEndsAt = 0;
     this.paused = false;
     this.pausedRemaining = 0;
+    this.pausedBy = null;
     this.submissions = new Map();
     await this.ctx.storage.deleteAlarm();
     await this.persist();
@@ -643,6 +669,7 @@ export class GameRoom implements DurableObject {
       deadline: this.deadline,
       serverNow: now,
       paused: this.paused,
+      pausedBy: this.paused ? this.pausedBy : null,
       remainingMs: this.paused ? this.pausedRemaining : null,
       leaderboard: this.buildLeaderboard(),
     };
@@ -691,20 +718,41 @@ export class GameRoom implements DurableObject {
   private buildLeaderboard(): LeaderboardEntry[] {
     const connectedIds = this.connectedPlayerIds();
 
-    const entries: LeaderboardEntry[] = [];
+    // Merge records that share a display name (case-insensitive) so the board
+    // never shows duplicate names — sum their rounds/totals into one entry.
+    const groups = new Map<
+      string,
+      { playerId: string; name: string; total: number; rounds: number; connected: boolean }
+    >();
     for (const [playerId, rec] of this.players.entries()) {
-      // Until a player has actually submitted a round, they have no score:
-      // rankedScore(0, 0) would return exactly the prior mean (55), which is
-      // misleading to show. Leave it null so the UI renders "new" / "—".
-      const played = rec.rounds > 0;
+      const key = rec.name.trim().toLowerCase();
+      const conn = connectedIds.has(playerId);
+      const g = groups.get(key);
+      if (g) {
+        g.total += rec.total;
+        g.rounds += rec.rounds;
+        if (conn) {
+          g.connected = true;
+          g.playerId = playerId; // prefer a currently-connected id for "you" matching
+        }
+      } else {
+        groups.set(key, { playerId, name: rec.name, total: rec.total, rounds: rec.rounds, connected: conn });
+      }
+    }
+
+    const entries: LeaderboardEntry[] = [];
+    for (const g of groups.values()) {
+      // Until a player has submitted a round they have no score: rankedScore(0,0)
+      // would be exactly the prior mean (55), which is misleading. Leave it null.
+      const played = g.rounds > 0;
       entries.push({
-        playerId,
-        name: rec.name,
-        rankedScore: played ? rankedScore(rec.total, rec.rounds) : null,
-        trueAvg: played ? rec.total / rec.rounds : null,
-        rounds: rec.rounds,
-        total: rec.total,
-        connected: connectedIds.has(playerId),
+        playerId: g.playerId,
+        name: g.name,
+        rankedScore: played ? rankedScore(g.total, g.rounds) : null,
+        trueAvg: played ? g.total / g.rounds : null,
+        rounds: g.rounds,
+        total: g.total,
+        connected: g.connected,
       });
     }
 
