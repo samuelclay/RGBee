@@ -1307,6 +1307,14 @@ $('mode-seg').addEventListener('click', e=>{
   $(id).addEventListener('input', ()=>{ state.touched=true; updateEstimate(); });
 });
 $('submit-btn').addEventListener('click', ()=>submitGuess(false));
+// Enter locks in the guess (works from the hex field or any slider mode).
+window.addEventListener('keydown', e=>{
+  if(e.key!=='Enter') return;
+  if(state.role!=='player' || state.phase!=='guess' || state.submitted) return;
+  if(e.target && e.target.id==='name-input') return; // landing handles its own
+  e.preventDefault();
+  submitGuess(false);
+});
 // Pause / resume — anyone can toggle.
 function togglePause(){ send({type: state.paused?'resume':'pause'}); }
 $('pause-btn').addEventListener('click', togglePause);
