@@ -204,8 +204,6 @@
   .estimate{font-family:var(--mono);font-size:14px;color:var(--ink-dim)}
   .estimate b{color:var(--honey);font-size:16px}
   .estimate .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint)}
-  .swatchpicker{display:flex;gap:7px;flex-wrap:wrap}
-  .swatchpicker input[type=color]{width:34px;height:34px;border:1px solid var(--line2);border-radius:9px;background:var(--bg);padding:2px;cursor:pointer}
 
   .locked{
     display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:13px;
@@ -326,6 +324,21 @@
   .pr-pausebtn{position:absolute;top:18px;left:18px;z-index:5}
   .paused-badge{display:none;font-weight:800;letter-spacing:.12em;color:var(--honey);text-transform:uppercase;font-size:12px}
   body.paused .paused-badge{display:inline}
+  /* last-round recap */
+  .recap{display:flex;align-items:center;gap:12px;padding:11px 13px}
+  .recap .rc-sw{display:flex;flex:none}
+  .recap .rc-sw i{display:block;width:34px;height:34px;border-radius:8px;border:1px solid var(--line2)}
+  .recap .rc-sw i+i{margin-left:-8px}
+  .recap .rc-body{min-width:0;flex:1}
+  .recap .rc-head{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);font-weight:800;margin-bottom:2px}
+  .recap .rc-line{font-size:13px;color:var(--ink)}
+  .recap .rc-line b{font-weight:800}
+  .pr-recap{margin:4px 0 12px;padding:11px 13px;border:1px solid var(--line2);border-radius:13px;background:var(--bg)}
+  .pr-recap .h{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:800;margin-bottom:7px}
+  .pr-recap .row{display:flex;align-items:center;gap:9px;font-size:15px;margin:4px 0}
+  .pr-recap .row .sw{width:20px;height:20px;border-radius:6px;border:1px solid var(--line2);flex:none}
+  .pr-recap .row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pr-recap .row .sc{font-weight:800}
 </style>
 </head>
 <body>
@@ -428,17 +441,13 @@
           </div>
         </div>
 
-        <div class="estimate-row">
-          <span class="estimate"><span class="lbl">estimate</span> <b id="pl-estimate">—</b></span>
-          <div class="preview-swatch" id="pl-preview"></div>
-        </div>
+        <p style="font-size:12px;color:var(--ink-faint);text-align:center;margin:2px 0 0">No preview, no score — guess blind. Closest eye wins. 🐝</p>
         <button class="btn btn-primary" id="submit-btn" disabled>Lock in guess</button>
       </div>
 
       <!-- locked state -->
       <div class="card guess-card" id="pl-locked" style="display:none">
         <div class="locked"><span class="chk">✓</span><span>Locked in <b class="mono" id="pl-locked-hex">#______</b> — waiting for reveal…</span></div>
-        <div class="estimate" style="text-align:center"><span class="lbl">your estimate</span> <b id="pl-locked-est">—</b></div>
       </div>
 
       <!-- reveal state -->
@@ -457,6 +466,14 @@
       <!-- idle state -->
       <div class="card guess-card" id="pl-idle" style="display:none">
         <div class="idle-note"><span class="bz">🐝</span><span>The hive is napping. The next round starts the moment someone shows up — hang tight…</span></div>
+      </div>
+
+      <div class="card recap" id="pl-recap" style="display:none">
+        <div class="rc-sw"><i id="pl-recap-real"></i><i id="pl-recap-guess"></i></div>
+        <div class="rc-body">
+          <div class="rc-head" id="pl-recap-head">Last round</div>
+          <div class="rc-line" id="pl-recap-line">—</div>
+        </div>
       </div>
 
       <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:600">Leaderboard</div>
@@ -491,6 +508,7 @@
             <span class="sub">Type a name, guess the hex, climb the board.</span>
           </div>
         </div>
+        <div class="pr-recap" id="pr-recap" style="display:none"></div>
         <h2>Leaderboard</h2>
         <div class="present-lb" id="pr-lb"><div class="lb-empty">Waiting for players to join…</div></div>
       </aside>
@@ -509,7 +527,7 @@
    ========================================================================== */
 
 /* ---------------- OKLab + scoring (mirror of src/oklab.ts) ---------------- */
-const K_FALLOFF = 4.0;
+const K_FALLOFF = 1.2;
 function clamp01(c){ return c<0?0:c>1?1:c; }
 function srgbToLinear(c){ return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); }
 function parseHex(hex){
@@ -592,6 +610,9 @@ const state = {
   you:null,                       // {playerId,name,submittedThisRound}
   myGuess:null,                   // last hex I typed/submitted this round
   submitted:false,
+  touched:false,                  // did I interact with the input this round?
+  autoLocked:false,               // guard: a guess send is in flight / done
+  lastRound:null,                 // {round,target,results} recap of prior round
   lastRenderedColor:null,
   lbDom:{}                        // playerId -> row el (for FLIP animation)
 };
@@ -613,7 +634,7 @@ function connect(){
     setStatus(true);
     send({type:'hello', playerId: LS.pid || undefined});
     // restore role intent
-    if(state.role==='player' && LS.name){ send({type:'join', name: LS.name}); }
+    if(state.role==='player' && LS.name){ send({type:'join', name: LS.name, playerId: LS.pid||undefined}); }
     else if(state.role==='present'){ send({type:'watch'}); }
   });
   ws.addEventListener('message', ev=>{
@@ -649,6 +670,7 @@ function handle(msg){
       state.paused=!!msg.paused; state.pausedRemaining=msg.remainingMs||0;
       state.leaderboard=msg.leaderboard||[];
       state.results=msg.results||null; state.target=msg.target||null;
+      if(msg.lastRound!==undefined) state.lastRound=msg.lastRound;
       if(msg.you){ state.you=msg.you; state.submitted=!!msg.you.submittedThisRound; }
       // a fresh guess phase means a new round -> reset my local guess unless still submitted
       if(state.phase==='guess' && !state.submitted){ state.myGuess=null; }
@@ -667,8 +689,10 @@ function handle(msg){
       state.deadline=msg.deadline; state.revealEndsAt=0;
       state.paused=false; state.pausedRemaining=0;
       state.target=null; state.results=null;
+      if(msg.lastRound!==undefined) state.lastRound=msg.lastRound;
       state.submitted=false; state.myGuess=null;
       if(state.you) state.you.submittedThisRound=false;
+      clearGuessInput();           // wipe last round's guess from the input
       renderAll();
       break;
     }
@@ -701,10 +725,10 @@ function handle(msg){
       if(msg.accepted){
         state.submitted=true;
         if(state.you) state.you.submittedThisRound=true;
-        if(typeof msg.score==='number') state.myGuessScore=msg.score;
         renderPlayer();
         toast('Locked in 🔒');
       } else {
+        state.autoLocked=false; // allow another attempt
         toast('Guess not accepted — too late or already in.');
       }
       break;
@@ -763,6 +787,13 @@ function tick(){
     $('pl-ring-prog').style.strokeDashoffset = (C*(1-frac)).toFixed(1);
     $('pl-ring-prog').style.stroke = paused?'var(--honey)':((state.phase==='guess'&&secs<=5)?'var(--bad)':(state.phase==='reveal'?'var(--beeB)':'var(--honey)'));
     $('pl-ring-num').textContent = paused?'❚❚':(state.phase==='idle'?'·':secs);
+
+    // Auto-lock a valid guess as the clock runs out (fire ~0.8s early to beat
+    // the server deadline; only if the player actually entered something).
+    if(state.phase==='guess' && !paused && !state.submitted && !state.autoLocked
+       && state.touched && ms<=800 && readCurrentHex()){
+      submitGuess(true);
+    }
   }
 
   // PRESENTATION clock
@@ -785,6 +816,7 @@ function renderAll(){
   if(state.role==='landing') renderLanding();
   else if(state.role==='player') renderPlayer();
   else if(state.role==='present') renderPresent();
+  renderRecap();
   renderLeaderboards();
   // present player count
   const playing = state.leaderboard.filter(p=>p.connected).length;
@@ -827,7 +859,6 @@ function renderPlayer(){
     if(state.submitted){
       cards.locked.style.display='';
       $('pl-locked-hex').textContent = '#'+(state.myGuess||'??????').toUpperCase();
-      $('pl-locked-est').textContent = (state.myGuessScore!=null?state.myGuessScore:(state.myGuess&&state.color?scoreGuessLocal('#'+state.myGuess, hexToOklab(normHex(state.color))):'—'))+'%';
       $('pl-phase').textContent='Locked in'; $('pl-phase-sub').textContent='waiting for the reveal…';
     } else {
       cards.guess.style.display='';
@@ -911,22 +942,66 @@ function syncChanLabels(){
   $('hsl-l-val').textContent=$('hsl-l').value+'%';
 }
 
+// Refresh the guess input UI (no estimate, no preview — guessing is blind).
 function updateEstimate(){
   syncChanLabels();
-  const submit=$('submit-btn'); const prev=$('pl-preview'); const est=$('pl-estimate');
+  const submit=$('submit-btn');
   const hex=readCurrentHex();
-  if(hex){
-    prev.style.backgroundColor=hex;
-    state.myGuess = hex.replace('#','');
-    if(state.color){
-      const s=scoreGuessLocal(hex, hexToOklab(normHex(state.color)));
-      est.textContent = (s!=null?s:'—')+'%';
-    } else est.textContent='—';
-    submit.disabled = !(state.phase==='guess' && !state.submitted && state.connected && state.you);
-  } else {
-    prev.style.backgroundColor='transparent';
-    est.textContent='—';
-    submit.disabled=true;
+  state.myGuess = hex ? hex.replace('#','') : null;
+  submit.disabled = !(hex && state.phase==='guess' && !state.submitted && state.connected && state.you);
+}
+
+// Reset the input to a neutral state at the start of each round.
+function clearGuessInput(){
+  const hi=$('hex-input'); if(hi) hi.value='';
+  const set=(id,v)=>{const el=$(id); if(el) el.value=v;};
+  set('rgb-r',50); set('rgb-g',50); set('rgb-b',50);
+  set('hsl-h',180); set('hsl-s',60); set('hsl-l',55);
+  state.touched=false; state.autoLocked=false; state.myGuess=null;
+  updateEstimate();
+}
+
+// Submit the current guess. auto=true is the timer-expiry auto-lock.
+function submitGuess(auto){
+  if(state.submitted || state.autoLocked) return;
+  const hex=readCurrentHex();
+  if(!hex){ if(!auto) toast('Enter a color first'); return; }
+  state.myGuess = hex.replace('#','');
+  state.autoLocked = true;        // block double-send until guess_ack
+  send({type:'guess', hex});
+  if(auto) toast('⏱ time! auto-locked your guess');
+}
+
+// Last-round recap (player + presentation), shown during the next round.
+function renderRecap(){
+  const lr = state.lastRound;
+  const show = (state.phase==='guess' || state.phase==='idle') && lr && lr.results;
+  const pr=$('pl-recap');
+  if(pr){
+    if(show && state.role==='player'){
+      pr.style.display='';
+      $('pl-recap-real').style.background = normHex(lr.target);
+      const mine = state.you ? lr.results.find(r=>r.playerId===state.you.playerId) : null;
+      const gEl=$('pl-recap-guess');
+      $('pl-recap-head').textContent = 'Round '+lr.round+' · last round';
+      if(mine){
+        gEl.style.display=''; gEl.style.background=normHex(mine.guess);
+        $('pl-recap-line').innerHTML = 'real '+normHex(lr.target).toUpperCase()+' · you <b>'+mine.score+'%</b> · rank #'+mine.rank+' of '+lr.results.length;
+      } else {
+        gEl.style.display='none';
+        $('pl-recap-line').innerHTML = 'real '+normHex(lr.target).toUpperCase()+' · you sat it out';
+      }
+    } else pr.style.display='none';
+  }
+  const pp=$('pr-recap');
+  if(pp){
+    if(show && state.role==='present'){
+      pp.style.display='';
+      const medal=['🥇','🥈','🥉'];
+      pp.innerHTML='<div class="h">Last round · #'+lr.round+'</div>'+
+        '<div class="row"><span class="sw" style="background:'+normHex(lr.target)+'"></span><span class="nm" style="color:var(--ink-faint)">real color '+normHex(lr.target).toUpperCase()+'</span></div>'+
+        lr.results.slice(0,3).map((r,i)=>'<div class="row"><span>'+medal[i]+'</span><span class="sw" style="background:'+normHex(r.guess)+'"></span><span class="nm">'+escapeHtml(r.name)+'</span><span class="sc">'+r.score+'%</span></div>').join('');
+    } else pp.style.display='none';
   }
 }
 
@@ -1075,6 +1150,7 @@ function goLanding(){
   $('topbar').style.display='';
   show('view-landing');
   $('name-input').value = LS.name||'';
+  refreshJoinCard();
   renderAll();
 }
 function goPlayer(name){
@@ -1082,8 +1158,15 @@ function goPlayer(name){
   if(name){ LS.name=name; }
   $('topbar').style.display='';
   show('view-player');
-  send({type:'join', name: LS.name});
+  // Stored playerId is authoritative server-side, so rejoining never dupes.
+  send({type:'join', name: LS.name, playerId: LS.pid||undefined});
   renderAll();
+}
+// Frictionless rejoin: if we've played before, offer one-tap "Continue as {name}".
+function refreshJoinCard(){
+  const btn=$('play-btn'); if(!btn) return;
+  if(LS.name){ btn.textContent='Continue as '+LS.name+' →'; }
+  else { btn.textContent='Play →'; }
 }
 function goPresent(){
   state.role='present'; LS.mode='present';
@@ -1103,6 +1186,10 @@ $('play-btn').addEventListener('click', ()=>{
   goPlayer(name.slice(0,20));
 });
 $('name-input').addEventListener('keydown', e=>{ if(e.key==='Enter') $('play-btn').click(); });
+$('name-input').addEventListener('input', e=>{
+  const v=e.target.value.trim();
+  $('play-btn').textContent = v ? ((LS.name&&v===LS.name)?'Continue as '+v+' →':'Play as '+v+' →') : 'Play →';
+});
 $('watch-btn').addEventListener('click', goPresent);
 $('exit-present').addEventListener('click', goLanding);
 $('pl-leave').addEventListener('click', goLanding);
@@ -1110,6 +1197,7 @@ $('pl-leave').addEventListener('click', goLanding);
 $('hex-input').addEventListener('input', e=>{
   let v=e.target.value.replace(/[^0-9a-fA-F]/g,'').slice(0,6).toUpperCase();
   e.target.value=v;
+  state.touched=true;
   updateEstimate();
 });
 // input-mode selector (Hex / RGB% / HSL)
@@ -1125,15 +1213,9 @@ $('mode-seg').addEventListener('click', e=>{
 });
 // RGB% + HSL sliders
 ['rgb-r','rgb-g','rgb-b','hsl-h','hsl-s','hsl-l'].forEach(id=>{
-  $(id).addEventListener('input', updateEstimate);
+  $(id).addEventListener('input', ()=>{ state.touched=true; updateEstimate(); });
 });
-$('submit-btn').addEventListener('click', ()=>{
-  const hex=readCurrentHex();
-  if(!hex){ toast('Pick a full color first'); return; }
-  state.myGuess = hex.replace('#','');
-  if(state.color) state.myGuessScore = scoreGuessLocal(hex, hexToOklab(normHex(state.color)));
-  send({type:'guess', hex});
-});
+$('submit-btn').addEventListener('click', ()=>submitGuess(false));
 // Pause / resume — anyone can toggle.
 function togglePause(){ send({type: state.paused?'resume':'pause'}); }
 $('pause-btn').addEventListener('click', togglePause);
@@ -1147,7 +1229,7 @@ function boot(){
   const mode=LS.mode;
   if(mode==='present'){ state.role='present'; $('topbar').style.display='none'; show('view-present'); }
   else if(mode==='player' && LS.name){ state.role='player'; show('view-player'); }
-  else { state.role='landing'; $('name-input').value=LS.name||''; }
+  else { state.role='landing'; $('name-input').value=LS.name||''; refreshJoinCard(); }
   connect();
   requestAnimationFrame(tick);
   if(state.role==='present') makeQR();

@@ -29,9 +29,12 @@ export interface TargetColor {
 
 /**
  * Scoring falloff. score = round(100 * exp(-K_FALLOFF * oklabDistance)).
- * Playtest target: a pretty-close guess scores ~85-90, a wild miss bottoms low.
+ * Tuned generously (party game). At this K: greens #4CB853/#4CF24C (dist .166)
+ * ~82, rose/brick #C87F7D/#A62D0B (dist .204) ~78, far miss (.5) ~55, opp ~30.
+ * Note: the two playtest targets (greens=90, rose=72) can't both be hit by a
+ * smooth curve since they're close in distance — this is the generous middle.
  */
-export const K_FALLOFF = 4.0;
+export const K_FALLOFF = 1.2;
 
 /** Bayesian shrinkage prior mean (percent) for ranking few-round players. */
 export const PRIOR_MEAN = 55;

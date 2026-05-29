@@ -83,6 +83,9 @@ export class GameRoom implements DurableObject {
   private pausedRemaining = 0; // ms left on the active timer at pause time
   private submissions = new Map<string, Submission>(); // current round only
   private players = new Map<string, PlayerRecord>();
+  // Snapshot of the most recently revealed round, shown during the next round
+  // so people who looked away can still see how they just did.
+  private lastRound: { round: number; target: string; results: ResultEntry[] } | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx;
@@ -114,6 +117,10 @@ export class GameRoom implements DurableObject {
 
     const pls = await s.get<[string, PlayerRecord][]>('players');
     this.players = new Map(pls ?? []);
+
+    this.lastRound =
+      (await s.get<{ round: number; target: string; results: ResultEntry[] }>('lastRound')) ??
+      null;
   }
 
   private async persist(): Promise<void> {
@@ -131,6 +138,7 @@ export class GameRoom implements DurableObject {
       pausedRemaining: this.pausedRemaining,
       submissions: [...this.submissions.entries()],
       players: [...this.players.entries()],
+      lastRound: this.lastRound,
     });
   }
 
@@ -140,6 +148,12 @@ export class GameRoom implements DurableObject {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+
+    // Host/admin: wipe the leaderboard and start fresh (auth done at the Worker).
+    if (url.pathname === '/reset') {
+      await this.resetAll();
+      return new Response('reset ok');
+    }
 
     if (url.pathname !== '/ws') {
       return new Response('Not found', { status: 404 });
@@ -275,19 +289,22 @@ export class GameRoom implements DurableObject {
     const rawName = typeof msg.name === 'string' ? msg.name.trim() : '';
     const name = (rawName || 'Anonymous').slice(0, 32);
 
-    const existing = this.attachmentOf(ws);
-    let playerId: string | undefined =
-      existing?.playerId && this.players.has(existing.playerId)
-        ? existing.playerId
+    // The client's stored playerId is AUTHORITATIVE: a returning player always
+    // maps to exactly one record (their stored id), whether or not the server
+    // still has it. This makes rejoin deterministic — one browser, one record,
+    // ever — so re-entering/auto-rejoining can never mint a duplicate.
+    const claimed =
+      typeof msg.playerId === 'string' && msg.playerId.trim()
+        ? msg.playerId.trim().slice(0, 64)
         : undefined;
+    const existing = this.attachmentOf(ws);
+    const playerId = claimed || existing?.playerId || crypto.randomUUID();
 
-    if (!playerId) {
-      playerId = crypto.randomUUID();
-      this.players.set(playerId, { name, total: 0, rounds: 0 });
+    const rec = this.players.get(playerId);
+    if (rec) {
+      rec.name = name; // keep score, update display name
     } else {
-      // Keep score, update display name.
-      const rec = this.players.get(playerId)!;
-      rec.name = name;
+      this.players.set(playerId, { name, total: 0, rounds: 0 });
     }
 
     ws.serializeAttachment({ playerId, role: 'player' } as Attachment);
@@ -445,6 +462,7 @@ export class GameRoom implements DurableObject {
       color: this.target,
       deadline: this.deadline,
       serverNow: now,
+      lastRound: this.lastRound,
     });
   }
 
@@ -491,6 +509,9 @@ export class GameRoom implements DurableObject {
       r.rank = i + 1;
     });
 
+    // Remember this round so the next round can show a "last round" recap.
+    this.lastRound = { round: this.round, target: this.target, results };
+
     this.revealEndsAt = now + REVEAL_MS;
     await this.ctx.storage.setAlarm(this.revealEndsAt);
     await this.persist();
@@ -504,6 +525,30 @@ export class GameRoom implements DurableObject {
       revealEndsAt: this.revealEndsAt,
       serverNow: now,
     });
+  }
+
+  /** Wipe roster + scores and return to a clean idle state, then resume. */
+  private async resetAll(): Promise<void> {
+    this.players.clear();
+    this.submissions = new Map();
+    this.lastRound = null;
+    this.round = 0;
+    this.phase = 'idle';
+    this.target = '#000000';
+    this.targetOklab = { L: 0, a: 0, b: 0 };
+    this.deadline = 0;
+    this.revealEndsAt = 0;
+    this.paused = false;
+    this.pausedRemaining = 0;
+    await this.ctx.storage.deleteAlarm();
+    await this.persist();
+    this.broadcast({
+      type: 'leaderboard',
+      leaderboard: this.buildLeaderboard(),
+      serverNow: Date.now(),
+    });
+    // If anyone is watching/playing, kick off a fresh round immediately.
+    await this.ensureRunning();
   }
 
   private async goIdle(): Promise<void> {
@@ -607,6 +652,10 @@ export class GameRoom implements DurableObject {
       snap.target = this.target;
       snap.results = this.buildResults();
     }
+
+    // Always include the previous round so a late joiner / look-away player
+    // can see how the last round went while the current one runs.
+    if (this.lastRound) snap.lastRound = this.lastRound;
 
     // Identity / per-connection player view.
     if (att?.role === 'player' && att.playerId && this.players.has(att.playerId)) {
