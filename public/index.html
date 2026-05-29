@@ -227,8 +227,16 @@
   .hexread .hc.r b{color:#ff9ba6} .hexread .hc.r .bar i{background:#ff5b6e}
   .hexread .hc.g b{color:#8fe9ad} .hexread .hc.g .bar i{background:#43d17f}
   .hexread .hc.b b{color:#a9caff} .hexread .hc.b .bar i{background:#5b9bff}
+  .hexread .hc em{display:none}
   .hexread.tiny{padding:4px 8px;gap:5px}
   .hexread.tiny .hh{font-size:13px} .hexread.tiny .hc b{font-size:13px} .hexread.tiny .hc .bar{width:22px}
+  .hexread.big{gap:clamp(12px,1.8vw,22px);padding:clamp(10px,1.4vw,16px) clamp(16px,2.2vw,26px);border-radius:16px;align-items:flex-start}
+  .hexread.big .hh{font-size:clamp(30px,4.4vw,54px);align-self:center}
+  .hexread.big .hc{gap:9px}
+  .hexread.big .hc b{font-size:clamp(30px,4.4vw,54px)}
+  .hexread.big .hc .bar{width:clamp(54px,7vw,96px);height:5px}
+  .hexread.big .hc em{display:block;font-style:normal;font-size:clamp(10px,1vw,13px);font-weight:800;letter-spacing:.16em}
+  .hexread.big .hc.r em{color:#ff9ba6} .hexread.big .hc.g em{color:#8fe9ad} .hexread.big .hc.b em{color:#a9caff}
   .vs-swatch .tag{position:absolute;top:10px;left:12px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.85);font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,.5)}
   .vs-mid{font-family:var(--font-display);font-weight:700;color:var(--ink-faint);font-size:22px}
   .score-pop{text-align:center;padding:10px 0}
@@ -294,7 +302,7 @@
 
   /* presentation reveal */
   .present-reveal{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:clamp(14px,2vw,28px);padding:clamp(20px,4vw,50px);animation:beatIn .55s var(--ease)}
-  .pr-truth{font-family:var(--mono);font-weight:700;font-size:clamp(28px,5vw,64px);color:#fff;text-shadow:0 3px 18px rgba(0,0,0,.4);letter-spacing:.04em}
+  .pr-truth{display:flex;justify-content:center;width:100%}
   .pr-label{font-size:clamp(12px,1.4vw,16px);letter-spacing:.16em;text-transform:uppercase;font-weight:700}
   .spotlight{display:flex;gap:clamp(12px,2vw,28px);align-items:flex-end;justify-content:center;flex-wrap:wrap}
   .spot{display:flex;flex-direction:column;align-items:center;gap:8px;animation:spotIn .6s var(--ease) both}
@@ -1085,10 +1093,10 @@ function renderRecap(){
             '<span class="rc-legend"><i><span class="k-real"></span>true</i><i><span class="k-you"></span>you</i></span></div>'+
           '<div class="rc-top">'+
             '<div class="rc-pair"><span class="rc-chip" style="background:'+normHex(lr.target)+'"></span>'+
-              '<span class="rc-meta">'+hexReadout(lr.target,true)+'<span class="rc-cap">real color</span></span></div>'+
+              '<span class="rc-meta">'+hexReadout(lr.target,'tiny')+'<span class="rc-cap">real color</span></span></div>'+
             '<span class="rc-arrow">→</span>'+
             '<div class="rc-pair"><span class="rc-chip" style="background:'+normHex(mine.guess)+'"></span>'+
-              '<span class="rc-meta">'+hexReadout(mine.guess,true)+'<span class="rc-cap">your guess</span></span></div>'+
+              '<span class="rc-meta">'+hexReadout(mine.guess,'tiny')+'<span class="rc-cap">your guess</span></span></div>'+
             '<div class="rc-score"><b>'+mine.score+'%</b><span>rank #'+mine.rank+'/'+lr.results.length+'</span></div>'+
           '</div>'+
           '<div class="rc-chs">'+rgbChannelBars(parseHex(lr.target), parseHex(mine.guess))+'</div>';
@@ -1096,7 +1104,7 @@ function renderRecap(){
         pr.className='card recap sat';
         pr.innerHTML =
           '<span class="rc-chip" style="background:'+normHex(lr.target)+'"></span>'+
-          '<div class="rc-meta">'+hexReadout(lr.target,true)+''+
+          '<div class="rc-meta">'+hexReadout(lr.target,'tiny')+''+
             '<span class="rc-cap">round '+lr.round+' · you sat it out</span></div>';
       }
     } else pr.style.display='none';
@@ -1124,11 +1132,11 @@ function medal(rank){ return rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':'';
 
 // Glanceable hex readout: "#" + color-coded RR/GG/BB pairs, each with a 0-255
 // magnitude bar — easy to parse the channels, full string still readable.
-function hexReadout(hex, tiny){
+function hexReadout(hex, variant){
   const rgb = parseHex(hex) || [0,0,0];
   const p = normHex(hex).replace('#','').toUpperCase();
-  const seg=(cls,hh,v)=>'<span class="hc '+cls+'"><b>'+hh+'</b><span class="bar"><i style="width:'+Math.round(v/255*100)+'%"></i></span></span>';
-  return '<span class="hexread'+(tiny?' tiny':'')+'"><span class="hh">#</span>'+
+  const seg=(cls,hh,v)=>'<span class="hc '+cls+'"><b>'+hh+'</b><span class="bar"><i style="width:'+Math.round(v/255*100)+'%"></i></span><em>'+cls.toUpperCase()+'</em></span>';
+  return '<span class="hexread'+(variant?' '+variant:'')+'"><span class="hh">#</span>'+
     seg('r',p.slice(0,2),rgb[0])+seg('g',p.slice(2,4),rgb[1])+seg('b',p.slice(4,6),rgb[2])+'</span>';
 }
 
@@ -1253,7 +1261,7 @@ function buildPresentReveal(host, tgt){
   host.innerHTML =
     '<div class="present-reveal">'+
       '<div class="pr-label" style="color:'+(isDark(tgt)?'rgba(255,255,255,.8)':'rgba(0,0,0,.6)')+'">The color was</div>'+
-      '<div class="pr-truth" style="color:'+txtcol+'">'+tgt.toUpperCase()+'</div>'+
+      '<div class="pr-truth">'+hexReadout(tgt,'big')+'</div>'+
       (spots?'<div class="spotlight">'+spots+'</div>':'<div class="pr-label" style="color:'+(isDark(tgt)?"rgba(255,255,255,.7)":"rgba(0,0,0,.55)")+'">No guesses this round.</div>')+
     '</div>';
 }
@@ -1371,18 +1379,30 @@ function charlieSend(eventType, properties){
 function charlieAppend(text){ return charlieSend('conversation.append_llm_context', {context:text}); }
 function charlieRespond(text){ return charlieSend('conversation.respond', {text}); }
 
+// Nearest CSS named color → lets Charlie describe the hue in human words.
+const CSS_COLORS = ("aliceblue:F0F8FF antiquewhite:FAEBD7 aqua:00FFFF aquamarine:7FFFD4 azure:F0FFFF beige:F5F5DC bisque:FFE4C4 black:000000 blanchedalmond:FFEBCD blue:0000FF blueviolet:8A2BE2 brown:A52A2A burlywood:DEB887 cadetblue:5F9EA0 chartreuse:7FFF00 chocolate:D2691E coral:FF7F50 cornflowerblue:6495ED cornsilk:FFF8DC crimson:DC143C darkblue:00008B darkcyan:008B8B darkgoldenrod:B8860B darkgray:A9A9A9 darkgreen:006400 darkkhaki:BDB76B darkmagenta:8B008B darkolivegreen:556B2F darkorange:FF8C00 darkorchid:9932CC darkred:8B0000 darksalmon:E9967A darkseagreen:8FBC8F darkslateblue:483D8B darkslategray:2F4F4F darkturquoise:00CED1 darkviolet:9400D3 deeppink:FF1493 deepskyblue:00BFFF dimgray:696969 dodgerblue:1E90FF firebrick:B22222 forestgreen:228B22 fuchsia:FF00FF gainsboro:DCDCDC gold:FFD700 goldenrod:DAA520 gray:808080 green:008000 greenyellow:ADFF2F hotpink:FF69B4 indianred:CD5C5C indigo:4B0082 ivory:FFFFF0 khaki:F0E68C lavender:E6E6FA lawngreen:7CFC00 lemonchiffon:FFFACD lightblue:ADD8E6 lightcoral:F08080 lightcyan:E0FFFF lightgreen:90EE90 lightgray:D3D3D3 lightpink:FFB6C1 lightsalmon:FFA07A lightseagreen:20B2AA lightskyblue:87CEFA lightslategray:778899 lightsteelblue:B0C4DE lightyellow:FFFFE0 lime:00FF00 limegreen:32CD32 linen:FAF0E6 maroon:800000 mediumaquamarine:66CDAA mediumblue:0000CD mediumorchid:BA55D3 mediumpurple:9370DB mediumseagreen:3CB371 mediumslateblue:7B68EE mediumspringgreen:00FA9A mediumturquoise:48D1CC mediumvioletred:C71585 midnightblue:191970 mintcream:F5FFFA mistyrose:FFE4E1 moccasin:FFE4B5 navy:000080 olive:808000 olivedrab:6B8E23 orange:FFA500 orangered:FF4500 orchid:DA70D6 palegoldenrod:EEE8AA palegreen:98FB98 paleturquoise:AFEEEE palevioletred:DB7093 peachpuff:FFDAB9 peru:CD853F pink:FFC0CB plum:DDA0DD powderblue:B0E0E6 purple:800080 rebeccapurple:663399 red:FF0000 rosybrown:BC8F8F royalblue:4169E1 saddlebrown:8B4513 salmon:FA8072 sandybrown:F4A460 seagreen:2E8B57 sienna:A0522D silver:C0C0C0 skyblue:87CEEB slateblue:6A5ACD slategray:708090 springgreen:00FF7F steelblue:4682B4 tan:D2B48C teal:008080 thistle:D8BFD8 tomato:FF6347 turquoise:40E0D0 violet:EE82EE wheat:F5DEB3 white:FFFFFF yellow:FFFF00 yellowgreen:9ACD32")
+  .split(' ').map(s=>{const a=s.split(':'),h=a[1];return [a[0],parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];});
+function nearestColorName(hex){
+  const t=parseHex(hex); if(!t) return '';
+  let best='',bd=Infinity;
+  for(const c of CSS_COLORS){ const d=(t[0]-c[1])**2+(t[1]-c[2])**2+(t[2]-c[3])**2; if(d<bd){bd=d;best=c[0];} }
+  return best.replace(/([a-z])([A-Z])/g,'$1 $2'); // (names are lowercase, no-op but safe)
+}
+
 // Game → Charlie: keep him aware and let him host.
 function charlieOnRoundStart(){
   if(!charlie.call) return;
   const n = (state.leaderboard||[]).filter(p=>p.connected).length;
-  charlieRespond('[RGBee] Round '+state.round+' is live — a fresh color just hit the big screen and '+n+' player'+(n===1?' is':'s are')+' in. Give ONE short, punchy hype line for the room. Do NOT reveal or guess the color, and do not announce any results yet.');
+  const cname = nearestColorName(state.color);
+  charlieRespond('[RGBee] Round '+state.round+' is live — a fresh color is on the big screen (closest named color: "'+cname+'") and '+n+' player'+(n===1?' is':'s are')+' in. Give ONE short, punchy hype line and feel free to describe the color by that name (e.g. "ooh, a gorgeous '+cname+'!"). Do NOT say any hex code or read out digits.');
 }
 function charlieOnReveal(){
   if(!charlie.call) return;
   const res = (state.results||[]).slice(0,3);
   const podium = res.length ? res.map((r,i)=>(i+1)+') '+r.name+' '+r.score+'%').join(', ') : 'nobody guessed';
+  const cname = nearestColorName(state.target);
   charlieAppend('[RGBee] Live leaderboard right now: '+(state.leaderboard||[]).slice(0,5).map(p=>p.name+' '+(p.rankedScore==null?'new':Math.round(p.rankedScore)+'%')).join(', ')+'.');
-  charlieRespond('[RGBee] Round '+state.round+' is over. The real color was '+normHex(state.target).toUpperCase()+'. Podium — '+podium+'. Announce it PROGRESSIVELY and dramatically: the winner first with how close they were, then second place, then third place, then stop. Keep the whole thing tight.');
+  charlieRespond('[RGBee] Round '+state.round+' is over. The real color was '+normHex(state.target).toUpperCase()+' — basically "'+cname+'". Podium — '+podium+'. Announce it PROGRESSIVELY and dramatically: the winner first with how close they were, then second place, then third place, then stop. You can name the color. Keep the whole thing tight.');
 }
 function goLanding(){
   state.role='landing'; LS.mode='';
