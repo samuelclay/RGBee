@@ -163,8 +163,15 @@
   .lb-row .sub{font-size:11px;color:var(--ink-faint);font-family:var(--mono)}
   .lb-row.me{background:rgba(255,201,60,.08);box-shadow:inset 0 0 0 1px rgba(255,201,60,.25)}
   .lb-row.r1 .rank{color:var(--honey)}
-  .conn-dot{width:6px;height:6px;border-radius:50%;background:var(--good);flex:none}
-  .conn-dot.off{background:var(--ink-faint)}
+  .conn-dot{width:7px;height:7px;border-radius:50%;background:#7fe0a3;flex:none;animation:livePulse 2s infinite}
+  .conn-dot.off{background:var(--ink-faint);animation:none;box-shadow:none}
+  @keyframes livePulse{0%{box-shadow:0 0 0 0 rgba(127,224,163,.55)}70%{box-shadow:0 0 0 6px rgba(127,224,163,0)}100%{box-shadow:0 0 0 0 rgba(127,224,163,0)}}
+  /* live vs quit rows */
+  .lb-row.live{box-shadow:inset 2px 0 0 #7fe0a3}
+  .lb-row.offline,.plb-row.offline{opacity:.42}
+  .plb-row.live{border-color:rgba(127,224,163,.5)}
+  .plb-row.offline .pnm{text-decoration:line-through;text-decoration-color:rgba(255,255,255,.25)}
+  .live-count{color:#7fe0a3;font-weight:800}
   .lb-empty{color:var(--ink-faint);font-size:13px;text-align:center;padding:18px}
 
   /* ============================ PLAYER VIEW ============================ */
@@ -431,7 +438,7 @@
         </div>
         <div class="mini-swatch" id="land-swatch"><span class="qmark">?</span></div>
         <div class="countbar-wrap"><div class="countbar" id="land-bar"></div></div>
-        <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:600;margin-top:2px">Leaderboard</div>
+        <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:600;margin-top:2px">Leaderboard <span class="live-count" id="land-live"></span></div>
         <div class="lb" id="land-lb"><div class="lb-empty">No players yet — be the first.</div></div>
       </div>
     </div>
@@ -534,7 +541,7 @@
 
       <div class="card recap" id="pl-recap" style="display:none"></div>
 
-      <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:600">Leaderboard</div>
+      <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:600">Leaderboard <span class="live-count" id="pl-live"></span></div>
       <div class="card" style="padding:8px 8px"><div class="lb" id="pl-lb"><div class="lb-empty">No players yet.</div></div></div>
 
       <div style="text-align:center"><button class="leave" id="pl-leave">← back to landing</button></div>
@@ -1127,6 +1134,10 @@ function renderLeaderboards(){
   renderCompactLB($('land-lb'), lb);
   renderCompactLB($('pl-lb'), lb);
   renderPresentLB(lb);
+  const live = lb.filter(p=>p.connected).length;
+  const txt = live ? ('· '+live+' live') : '';
+  const a=$('land-live'); if(a) a.textContent=txt;
+  const b=$('pl-live'); if(b) b.textContent=txt;
 }
 function medal(rank){ return rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':''; }
 
@@ -1157,7 +1168,7 @@ function renderCompactLB(host, lb){
   host.innerHTML='';
   lb.slice(0,8).forEach((p,i)=>{
     const row=document.createElement('div');
-    row.className='lb-row'+(i===0?' r1':'')+(p.playerId===myId?' me':'');
+    row.className='lb-row'+(i===0?' r1':'')+(p.playerId===myId?' me':'')+(p.connected?' live':' offline');
     row.innerHTML =
       '<span class="rank">'+(medal(i+1)||(i+1))+'</span>'+
       '<span class="nm"><span class="conn-dot'+(p.connected?'':' off')+'"></span>'+escapeHtml(p.name)+'</span>'+
@@ -1180,7 +1191,7 @@ function renderPresentLB(lb){
   lb.slice(0,12).forEach((p,i)=>{
     let row=state.lbDom[p.playerId];
     if(!row){ row=document.createElement('div'); }
-    row.className='plb-row'+(i===0?' top1':i===1?' top2':i===2?' top3':'')+(p.playerId===myId?' me':'');
+    row.className='plb-row'+(i===0?' top1':i===1?' top2':i===2?' top3':'')+(p.playerId===myId?' me':'')+(p.connected?' live':' offline');
     const crown = i===0?'<span class="crown">👑</span>':'';
     row.innerHTML =
       '<span class="prank">'+(medal(i+1)||(i+1))+'</span>'+
