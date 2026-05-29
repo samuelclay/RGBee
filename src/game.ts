@@ -17,6 +17,7 @@ export interface Env {
 
 const ROUND_MS = 45000; // length of the GUESS phase
 const REVEAL_MS = 8000; // length of the REVEAL phase
+const HISTORY_MAX = 30; // per-player guess history kept (most recent)
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,10 +31,17 @@ interface Oklab {
   b: number;
 }
 
+interface HistoryItem {
+  t: string; // target hex
+  g: string; // guess hex
+  s: number; // score 0..100
+}
+
 interface PlayerRecord {
   name: string;
   total: number; // sum of percentage scores across submitted rounds
   rounds: number; // count of rounds the player actually submitted
+  history?: HistoryItem[]; // recent (target,guess,score) per submitted round
 }
 
 interface Submission {
@@ -54,6 +62,7 @@ interface LeaderboardEntry {
   rounds: number;
   total: number;
   connected: boolean;
+  history: HistoryItem[]; // recent guess history (target/guess/score per round)
 }
 
 interface ResultEntry {
@@ -518,6 +527,13 @@ export class GameRoom implements DurableObject {
       rec.total += score;
       rec.rounds += 1; // only counts rounds actually submitted
 
+      // Append to the player's guess history (capped, most recent kept).
+      if (!rec.history) rec.history = [];
+      rec.history.push({ t: this.target, g: sub.hex, s: score });
+      if (rec.history.length > HISTORY_MAX) {
+        rec.history = rec.history.slice(-HISTORY_MAX);
+      }
+
       results.push({
         playerId,
         name: rec.name,
@@ -722,7 +738,7 @@ export class GameRoom implements DurableObject {
     // never shows duplicate names — sum their rounds/totals into one entry.
     const groups = new Map<
       string,
-      { playerId: string; name: string; total: number; rounds: number; connected: boolean }
+      { playerId: string; name: string; total: number; rounds: number; connected: boolean; history: HistoryItem[] }
     >();
     for (const [playerId, rec] of this.players.entries()) {
       const key = rec.name.trim().toLowerCase();
@@ -731,12 +747,20 @@ export class GameRoom implements DurableObject {
       if (g) {
         g.total += rec.total;
         g.rounds += rec.rounds;
+        g.history = g.history.concat(rec.history ?? []);
         if (conn) {
           g.connected = true;
           g.playerId = playerId; // prefer a currently-connected id for "you" matching
         }
       } else {
-        groups.set(key, { playerId, name: rec.name, total: rec.total, rounds: rec.rounds, connected: conn });
+        groups.set(key, {
+          playerId,
+          name: rec.name,
+          total: rec.total,
+          rounds: rec.rounds,
+          connected: conn,
+          history: [...(rec.history ?? [])],
+        });
       }
     }
 
@@ -753,6 +777,7 @@ export class GameRoom implements DurableObject {
         rounds: g.rounds,
         total: g.total,
         connected: g.connected,
+        history: g.history.slice(-16), // last 16, compact payload
       });
     }
 
