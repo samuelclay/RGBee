@@ -28,13 +28,14 @@ export interface TargetColor {
 // ---------------------------------------------------------------------------
 
 /**
- * Scoring falloff. score = round(100 * exp(-K_FALLOFF * oklabDistance)).
- * Tuned generously (party game). At this K: greens #4CB853/#4CF24C (dist .166)
- * ~82, rose/brick #C87F7D/#A62D0B (dist .204) ~78, far miss (.5) ~55, opp ~30.
- * Note: the two playtest targets (greens=90, rose=72) can't both be hit by a
- * smooth curve since they're close in distance — this is the generous middle.
+ * Scoring falloff. score = round(100 * exp(-K_FALLOFF * dist^K_POWER)).
+ * Generous-but-discriminating (party game): the power keeps close colors high
+ * while far misses still bottom out. At K=23/power=3: greens #4CB853/#4CF24C
+ * (dist .166) ~90, rose/brick #C87F7D/#A62D0B (dist .204) ~82, mid (.3) ~54,
+ * far (.5) ~6, opposite ~0.
  */
-export const K_FALLOFF = 1.2;
+export const K_FALLOFF = 23;
+export const K_POWER = 3;
 
 /** Bayesian shrinkage prior mean (percent) for ranking few-round players. */
 export const PRIOR_MEAN = 55;
@@ -145,11 +146,12 @@ export function oklabDistance(a: Oklab, b: Oklab): number {
 
 /**
  * Score a guess against a target (given as precomputed OKLab) as a percentage 0..100.
- * score = round(100 * exp(-K_FALLOFF * dist)), clamped to 0..100.
+ * score = round(100 * exp(-K_FALLOFF * dist^K_POWER)), clamped to 0..100.
+ * The power (>1) makes near guesses generous while keeping far misses low.
  */
 export function scoreGuess(guessHex: string, targetOklab: Oklab): number {
   const dist = oklabDistance(hexToOklab(guessHex), targetOklab);
-  const raw = Math.round(100 * Math.exp(-K_FALLOFF * dist));
+  const raw = Math.round(100 * Math.exp(-K_FALLOFF * Math.pow(dist, K_POWER)));
   return Math.max(0, Math.min(100, raw));
 }
 

@@ -527,7 +527,7 @@
    ========================================================================== */
 
 /* ---------------- OKLab + scoring (mirror of src/oklab.ts) ---------------- */
-const K_FALLOFF = 1.2;
+const K_FALLOFF = 23, K_POWER = 3;
 function clamp01(c){ return c<0?0:c>1?1:c; }
 function srgbToLinear(c){ return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); }
 function parseHex(hex){
@@ -559,7 +559,7 @@ function scoreGuessLocal(guessHex, targetOklab){
   const g = hexToOklab(guessHex);
   if(!g || !targetOklab) return null;
   const dist = oklabDistance(g, targetOklab);
-  let s = Math.round(100*Math.exp(-K_FALLOFF*dist));
+  let s = Math.round(100*Math.exp(-K_FALLOFF*Math.pow(dist,K_POWER)));
   return s<0?0:s>100?100:s;
 }
 
