@@ -216,7 +216,19 @@
   @keyframes beatIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
   .vs-swatches{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center}
   .vs-swatch{border-radius:16px;height:clamp(120px,22vh,190px);border:1px solid rgba(255,255,255,.1);position:relative;overflow:hidden;box-shadow:var(--shadow)}
-  .vs-swatch .cap{position:absolute;bottom:0;left:0;right:0;padding:9px 12px;background:linear-gradient(to top,rgba(0,0,0,.6),transparent);font-family:var(--mono);font-size:13px;font-weight:700;color:#fff}
+  .vs-swatch .cap{position:absolute;bottom:0;left:0;right:0;padding:10px;display:flex;justify-content:flex-start}
+  /* segmented, color-coded hex readout — glanceable R/G/B with magnitude bars */
+  .hexread{display:inline-flex;align-items:center;gap:7px;background:rgba(8,8,12,.62);backdrop-filter:blur(7px);padding:6px 11px;border-radius:12px;font-family:var(--mono);line-height:1;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+  .hexread .hh{color:rgba(255,255,255,.5);font-weight:800;font-size:16px}
+  .hexread .hc{display:flex;flex-direction:column;align-items:center;gap:5px}
+  .hexread .hc b{font-size:16px;font-weight:800;letter-spacing:.08em}
+  .hexread .hc .bar{width:30px;height:3px;border-radius:2px;background:rgba(255,255,255,.16);overflow:hidden}
+  .hexread .hc .bar i{display:block;height:100%;border-radius:2px}
+  .hexread .hc.r b{color:#ff9ba6} .hexread .hc.r .bar i{background:#ff5b6e}
+  .hexread .hc.g b{color:#8fe9ad} .hexread .hc.g .bar i{background:#43d17f}
+  .hexread .hc.b b{color:#a9caff} .hexread .hc.b .bar i{background:#5b9bff}
+  .hexread.tiny{padding:4px 8px;gap:5px}
+  .hexread.tiny .hh{font-size:13px} .hexread.tiny .hc b{font-size:13px} .hexread.tiny .hc .bar{width:22px}
   .vs-swatch .tag{position:absolute;top:10px;left:12px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.85);font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,.5)}
   .vs-mid{font-family:var(--font-display);font-weight:700;color:var(--ink-faint);font-size:22px}
   .score-pop{text-align:center;padding:10px 0}
@@ -926,7 +938,7 @@ function renderPlayer(){
 
     const tgt=normHex(state.target);
     const tEl=$('pl-rv-target'); tEl.style.backgroundColor=tgt;
-    $('pl-rv-target-cap').textContent=tgt.toUpperCase(); $('pl-rv-target-cap').style.color=fg(tgt);
+    $('pl-rv-target-cap').innerHTML=hexReadout(tgt);
     tEl.querySelector('.tag').style.color = isDark(tgt)?'rgba(255,255,255,.85)':'rgba(0,0,0,.7)';
 
     // my result
@@ -936,7 +948,7 @@ function renderPlayer(){
     if(mine){
       const gh=normHex(mine.guess);
       gEl.style.backgroundColor=gh;
-      $('pl-rv-guess-cap').textContent=gh.toUpperCase(); $('pl-rv-guess-cap').style.color=fg(gh);
+      $('pl-rv-guess-cap').innerHTML=hexReadout(gh);
       gEl.querySelector('.tag').style.color = isDark(gh)?'rgba(255,255,255,.85)':'rgba(0,0,0,.7)';
       $('pl-rv-score').textContent = mine.score+(typeof mine.score==='number'?'%':'');
       const rk = mine.rank, n=state.results.length;
@@ -1070,10 +1082,10 @@ function renderRecap(){
             '<span class="rc-legend"><i><span class="k-real"></span>true</i><i><span class="k-you"></span>you</i></span></div>'+
           '<div class="rc-top">'+
             '<div class="rc-pair"><span class="rc-chip" style="background:'+normHex(lr.target)+'"></span>'+
-              '<span class="rc-meta"><span class="rc-hex">'+normHex(lr.target).toUpperCase()+'</span><span class="rc-cap">real color</span></span></div>'+
+              '<span class="rc-meta">'+hexReadout(lr.target,true)+'<span class="rc-cap">real color</span></span></div>'+
             '<span class="rc-arrow">→</span>'+
             '<div class="rc-pair"><span class="rc-chip" style="background:'+normHex(mine.guess)+'"></span>'+
-              '<span class="rc-meta"><span class="rc-hex">'+normHex(mine.guess).toUpperCase()+'</span><span class="rc-cap">your guess</span></span></div>'+
+              '<span class="rc-meta">'+hexReadout(mine.guess,true)+'<span class="rc-cap">your guess</span></span></div>'+
             '<div class="rc-score"><b>'+mine.score+'%</b><span>rank #'+mine.rank+'/'+lr.results.length+'</span></div>'+
           '</div>'+
           '<div class="rc-chs">'+rgbChannelBars(parseHex(lr.target), parseHex(mine.guess))+'</div>';
@@ -1081,7 +1093,7 @@ function renderRecap(){
         pr.className='card recap sat';
         pr.innerHTML =
           '<span class="rc-chip" style="background:'+normHex(lr.target)+'"></span>'+
-          '<div class="rc-meta"><span class="rc-hex">'+normHex(lr.target).toUpperCase()+'</span>'+
+          '<div class="rc-meta">'+hexReadout(lr.target,true)+''+
             '<span class="rc-cap">round '+lr.round+' · you sat it out</span></div>';
       }
     } else pr.style.display='none';
@@ -1106,6 +1118,16 @@ function renderLeaderboards(){
   renderPresentLB(lb);
 }
 function medal(rank){ return rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':''; }
+
+// Glanceable hex readout: "#" + color-coded RR/GG/BB pairs, each with a 0-255
+// magnitude bar — easy to parse the channels, full string still readable.
+function hexReadout(hex, tiny){
+  const rgb = parseHex(hex) || [0,0,0];
+  const p = normHex(hex).replace('#','').toUpperCase();
+  const seg=(cls,hh,v)=>'<span class="hc '+cls+'"><b>'+hh+'</b><span class="bar"><i style="width:'+Math.round(v/255*100)+'%"></i></span></span>';
+  return '<span class="hexread'+(tiny?' tiny':'')+'"><span class="hh">#</span>'+
+    seg('r',p.slice(0,2),rgb[0])+seg('g',p.slice(2,4),rgb[1])+seg('b',p.slice(4,6),rgb[2])+'</span>';
+}
 
 // Compact guess history: a row of tiny swatch pairs (real on top, your guess
 // below), oldest→newest, so you can see how someone guessed over many rounds.
