@@ -429,6 +429,7 @@
       <div class="card guess-card" id="pl-guess-card">
         <div class="mode-seg" id="mode-seg">
           <button type="button" data-mode="hex" class="on">Hex</button>
+          <button type="button" data-mode="rgb255">RGB</button>
           <button type="button" data-mode="rgb">RGB %</button>
           <button type="button" data-mode="hsl">HSL</button>
         </div>
@@ -440,6 +441,15 @@
               <span class="hash">#</span>
               <input class="hex" id="hex-input" maxlength="6" placeholder="______" inputmode="text" autocomplete="off" spellcheck="false" aria-label="hex guess" />
             </label>
+          </div>
+        </div>
+
+        <!-- RGB (0-255) panel -->
+        <div class="in-panel" data-panel="rgb255" style="display:none">
+          <div class="chan-row">
+            <div class="chan"><label>R</label><input type="range" id="r255-r" min="0" max="255" step="1" value="128"><span class="val" id="r255-r-val">128</span></div>
+            <div class="chan"><label>G</label><input type="range" id="r255-g" min="0" max="255" step="1" value="128"><span class="val" id="r255-g-val">128</span></div>
+            <div class="chan"><label>B</label><input type="range" id="r255-b" min="0" max="255" step="1" value="128"><span class="val" id="r255-b-val">128</span></div>
           </div>
         </div>
 
@@ -944,6 +954,9 @@ function readCurrentHex(){
     if(raw.length!==6 && raw.length!==3) return null;
     return normHex('#'+raw);
   }
+  if(state.inputMode==='rgb255'){
+    return normHex('#'+ch2hex(+$('r255-r').value)+ch2hex(+$('r255-g').value)+ch2hex(+$('r255-b').value));
+  }
   if(state.inputMode==='rgb'){
     return normHex(rgbPctToHex(+$('rgb-r').value, +$('rgb-g').value, +$('rgb-b').value));
   }
@@ -954,6 +967,9 @@ function readCurrentHex(){
 }
 
 function syncChanLabels(){
+  $('r255-r-val').textContent=$('r255-r').value;
+  $('r255-g-val').textContent=$('r255-g').value;
+  $('r255-b-val').textContent=$('r255-b').value;
   $('rgb-r-val').textContent=$('rgb-r').value+'%';
   $('rgb-g-val').textContent=$('rgb-g').value+'%';
   $('rgb-b-val').textContent=$('rgb-b').value+'%';
@@ -975,6 +991,7 @@ function updateEstimate(){
 function clearGuessInput(){
   const hi=$('hex-input'); if(hi) hi.value='';
   const set=(id,v)=>{const el=$(id); if(el) el.value=v;};
+  set('r255-r',128); set('r255-g',128); set('r255-b',128);
   set('rgb-r',50); set('rgb-g',50); set('rgb-b',50);
   set('hsl-h',180); set('hsl-s',60); set('hsl-l',55);
   state.touched=false; state.autoLocked=false; state.myGuess=null;
@@ -1286,7 +1303,7 @@ $('mode-seg').addEventListener('click', e=>{
   updateEstimate();
 });
 // RGB% + HSL sliders
-['rgb-r','rgb-g','rgb-b','hsl-h','hsl-s','hsl-l'].forEach(id=>{
+['r255-r','r255-g','r255-b','rgb-r','rgb-g','rgb-b','hsl-h','hsl-s','hsl-l'].forEach(id=>{
   $(id).addEventListener('input', ()=>{ state.touched=true; updateEstimate(); });
 });
 $('submit-btn').addEventListener('click', ()=>submitGuess(false));
