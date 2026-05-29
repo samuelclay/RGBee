@@ -307,6 +307,25 @@
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+  /* input-mode selector + RGB/HSL panels */
+  .mode-seg{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line2);border-radius:11px;padding:4px;margin-bottom:12px}
+  .mode-seg button{flex:1;border:0;background:transparent;color:var(--ink-faint);font:inherit;font-weight:700;font-size:13px;letter-spacing:.02em;padding:8px 4px;border-radius:8px;cursor:pointer;transition:.16s}
+  .mode-seg button.on{background:var(--honey);color:#1a1300;box-shadow:0 2px 8px rgba(255,201,60,.25)}
+  .in-panel{margin-bottom:6px}
+  .chan-row{display:flex;flex-direction:column;gap:11px}
+  .chan{display:grid;grid-template-columns:34px 1fr 56px;align-items:center;gap:10px}
+  .chan label{font-weight:800;font-size:13px;color:var(--ink-faint);letter-spacing:.04em}
+  .chan .val{font-family:var(--mono,monospace);font-size:13px;text-align:right;color:var(--ink)}
+  .chan input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:8px;border-radius:6px;outline:none;cursor:pointer}
+  .chan input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid rgba(0,0,0,.35);box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer}
+  .chan input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid rgba(0,0,0,.35);cursor:pointer}
+  /* pause control */
+  .pausebtn{border:1px solid var(--line2);background:var(--bg);color:var(--ink);font:inherit;font-weight:700;font-size:13px;padding:7px 13px;border-radius:10px;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+  .pausebtn:hover{border-color:var(--honey)}
+  body.paused .pausebtn{background:var(--honey);color:#1a1300;border-color:var(--honey)}
+  .pr-pausebtn{position:absolute;top:18px;left:18px;z-index:5}
+  .paused-badge{display:none;font-weight:800;letter-spacing:.12em;color:var(--honey);text-transform:uppercase;font-size:12px}
+  body.paused .paused-badge{display:inline}
 </style>
 </head>
 <body>
@@ -316,7 +335,10 @@
     <div class="wordmark brand" aria-label="RGBee">
       <span class="bee-mascot" style="font-size:1.05em;margin-right:.18em">🐝</span><span class="hash">#</span><span class="rgb-stripes"><span class="s-r">R</span><span class="s-g">G</span><span class="s-b">B</span></span><span class="bee">ee</span>
     </div>
-    <div class="pill" id="status-pill"><span class="dot" id="conn-dot"></span><span id="status-text">connecting…</span></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="pausebtn" id="pause-btn" title="Anyone can pause the game">⏸ Pause</button>
+      <div class="pill" id="status-pill"><span class="dot" id="conn-dot"></span><span id="status-text">connecting…</span></div>
+    </div>
   </header>
 
   <!-- ===================== LANDING ===================== -->
@@ -372,16 +394,43 @@
 
       <!-- guessing state -->
       <div class="card guess-card" id="pl-guess-card">
-        <div class="hex-input-row">
-          <label class="hex-prefix" for="hex-input">
-            <span class="hash">#</span>
-            <input class="hex" id="hex-input" maxlength="6" placeholder="______" inputmode="text" autocomplete="off" spellcheck="false" aria-label="hex guess" />
-          </label>
-          <div class="preview-swatch" id="pl-preview"></div>
+        <div class="mode-seg" id="mode-seg">
+          <button type="button" data-mode="hex" class="on">Hex</button>
+          <button type="button" data-mode="rgb">RGB %</button>
+          <button type="button" data-mode="hsl">HSL</button>
         </div>
+
+        <!-- HEX panel -->
+        <div class="in-panel" data-panel="hex">
+          <div class="hex-input-row">
+            <label class="hex-prefix" for="hex-input">
+              <span class="hash">#</span>
+              <input class="hex" id="hex-input" maxlength="6" placeholder="______" inputmode="text" autocomplete="off" spellcheck="false" aria-label="hex guess" />
+            </label>
+          </div>
+        </div>
+
+        <!-- RGB % panel -->
+        <div class="in-panel" data-panel="rgb" style="display:none">
+          <div class="chan-row">
+            <div class="chan"><label>R</label><input type="range" id="rgb-r" min="0" max="100" step="1" value="50"><span class="val" id="rgb-r-val">50%</span></div>
+            <div class="chan"><label>G</label><input type="range" id="rgb-g" min="0" max="100" step="1" value="50"><span class="val" id="rgb-g-val">50%</span></div>
+            <div class="chan"><label>B</label><input type="range" id="rgb-b" min="0" max="100" step="1" value="50"><span class="val" id="rgb-b-val">50%</span></div>
+          </div>
+        </div>
+
+        <!-- HSL panel -->
+        <div class="in-panel" data-panel="hsl" style="display:none">
+          <div class="chan-row">
+            <div class="chan"><label>H</label><input type="range" id="hsl-h" min="0" max="360" step="1" value="180"><span class="val" id="hsl-h-val">180°</span></div>
+            <div class="chan"><label>S</label><input type="range" id="hsl-s" min="0" max="100" step="1" value="60"><span class="val" id="hsl-s-val">60%</span></div>
+            <div class="chan"><label>L</label><input type="range" id="hsl-l" min="0" max="100" step="1" value="55"><span class="val" id="hsl-l-val">55%</span></div>
+          </div>
+        </div>
+
         <div class="estimate-row">
           <span class="estimate"><span class="lbl">estimate</span> <b id="pl-estimate">—</b></span>
-          <span class="swatchpicker"><input type="color" id="pl-colorpick" value="#888888" aria-label="pick a color" /></span>
+          <div class="preview-swatch" id="pl-preview"></div>
         </div>
         <button class="btn btn-primary" id="submit-btn" disabled>Lock in guess</button>
       </div>
@@ -422,6 +471,7 @@
     <button class="exit-present" id="exit-present">✕ exit presentation</button>
     <div class="present-grid">
       <div class="present-stage" id="pr-stage">
+        <button class="pausebtn pr-pausebtn" id="pr-pause-btn" title="Anyone can pause the game">⏸ Pause</button>
         <span class="roundtag" id="pr-round">ROUND —</span>
         <span class="present-qmark" id="pr-qmark">?</span>
         <div class="present-clock" id="pr-clock"><span class="cnum" id="pr-cnum">—</span><span class="clbl" id="pr-clbl">seconds<br>to guess</span></div>
@@ -536,6 +586,8 @@ const state = {
   offset:0,                       // serverNow - clientNow
   phase:'idle', round:0,
   color:null, target:null, deadline:0, revealEndsAt:0,
+  paused:false, pausedRemaining:0,
+  inputMode:'hex',                // 'hex' | 'rgb' | 'hsl'
   leaderboard:[], results:null,
   you:null,                       // {playerId,name,submittedThisRound}
   myGuess:null,                   // last hex I typed/submitted this round
@@ -594,6 +646,7 @@ function handle(msg){
       syncClock(msg.serverNow);
       state.phase=msg.phase; state.round=msg.round; state.color=msg.color;
       state.deadline=msg.deadline||0; state.revealEndsAt=msg.revealEndsAt||0;
+      state.paused=!!msg.paused; state.pausedRemaining=msg.remainingMs||0;
       state.leaderboard=msg.leaderboard||[];
       state.results=msg.results||null; state.target=msg.target||null;
       if(msg.you){ state.you=msg.you; state.submitted=!!msg.you.submittedThisRound; }
@@ -612,6 +665,7 @@ function handle(msg){
       syncClock(msg.serverNow);
       state.phase='guess'; state.round=msg.round; state.color=msg.color;
       state.deadline=msg.deadline; state.revealEndsAt=0;
+      state.paused=false; state.pausedRemaining=0;
       state.target=null; state.results=null;
       state.submitted=false; state.myGuess=null;
       if(state.you) state.you.submittedThisRound=false;
@@ -624,7 +678,17 @@ function handle(msg){
       state.target=msg.target; state.results=msg.results||[];
       state.leaderboard=msg.leaderboard||state.leaderboard;
       state.revealEndsAt=msg.revealEndsAt; state.deadline=0;
+      state.paused=false; state.pausedRemaining=0;
       renderAll();
+      break;
+    }
+    case 'paused':{
+      syncClock(msg.serverNow);
+      state.paused=!!msg.paused;
+      state.pausedRemaining=msg.remainingMs||0;
+      if(typeof msg.deadline==='number') state.deadline=msg.deadline;
+      if(typeof msg.revealEndsAt==='number') state.revealEndsAt=msg.revealEndsAt;
+      toast(state.paused?'⏸ Game paused':'▶ Resumed');
       break;
     }
     case 'leaderboard':{
@@ -661,7 +725,10 @@ function setStatus(on){
 /* ============================================================================
    Countdown ticker (renders against server-synced clock)
    ========================================================================== */
+const GUESS_TOTAL_MS=45000, REVEAL_TOTAL_MS=8000;
 function remainingMs(){
+  // While paused the timer is frozen at the server-reported remaining time.
+  if(state.paused) return Math.max(0, state.pausedRemaining);
   if(state.phase==='guess') return Math.max(0, state.deadline - serverTime());
   if(state.phase==='reveal') return Math.max(0, state.revealEndsAt - serverTime());
   return 0;
@@ -671,31 +738,39 @@ function fmtSecs(ms){ return Math.ceil(ms/1000); }
 function tick(){
   const ms = remainingMs();
   const secs = fmtSecs(ms);
+  const paused = state.paused;
+
+  // global paused styling + button labels
+  document.body.classList.toggle('paused', paused);
+  const plabel = paused?'▶ Resume':'⏸ Pause';
+  const pb=$('pause-btn'); if(pb) pb.textContent=plabel;
+  const ppb=$('pr-pause-btn'); if(ppb) ppb.textContent=plabel;
 
   // LANDING mini
   if(state.role==='landing'){
-    const total = state.phase==='guess'?20000:(state.phase==='reveal'?8000:1);
+    const total = state.phase==='guess'?GUESS_TOTAL_MS:(state.phase==='reveal'?REVEAL_TOTAL_MS:1);
     const frac = state.phase==='idle'?1:clamp01(ms/total);
-    $('land-count').textContent = state.phase==='idle'?'idle':(state.phase==='reveal'?'reveal':secs+'s');
+    $('land-count').textContent = paused?'paused':(state.phase==='idle'?'idle':(state.phase==='reveal'?'reveal':secs+'s'));
     const bar=$('land-bar'); bar.style.width=(frac*100)+'%';
-    bar.classList.toggle('urgent', state.phase==='guess'&&secs<=5);
+    bar.classList.toggle('urgent', !paused&&state.phase==='guess'&&secs<=5);
   }
 
   // PLAYER ring
   if(state.role==='player'){
-    const total = state.phase==='guess'?20000:(state.phase==='reveal'?8000:1);
+    const total = state.phase==='guess'?GUESS_TOTAL_MS:(state.phase==='reveal'?REVEAL_TOTAL_MS:1);
     const frac = state.phase==='idle'?0:clamp01(ms/total);
     const C=175.9;
     $('pl-ring-prog').style.strokeDashoffset = (C*(1-frac)).toFixed(1);
-    $('pl-ring-prog').style.stroke = (state.phase==='guess'&&secs<=5)?'var(--bad)':(state.phase==='reveal'?'var(--beeB)':'var(--honey)');
-    $('pl-ring-num').textContent = state.phase==='idle'?'·':secs;
+    $('pl-ring-prog').style.stroke = paused?'var(--honey)':((state.phase==='guess'&&secs<=5)?'var(--bad)':(state.phase==='reveal'?'var(--beeB)':'var(--honey)'));
+    $('pl-ring-num').textContent = paused?'❚❚':(state.phase==='idle'?'·':secs);
   }
 
   // PRESENTATION clock
   if(state.role==='present'){
-    $('pr-cnum').textContent = state.phase==='idle'?'·':secs;
+    $('pr-cnum').textContent = paused?'❚❚':(state.phase==='idle'?'·':secs);
     const clbl=$('pr-clbl');
-    if(state.phase==='guess') clbl.innerHTML='seconds<br>to guess';
+    if(paused) clbl.innerHTML='paused';
+    else if(state.phase==='guess') clbl.innerHTML='seconds<br>to guess';
     else if(state.phase==='reveal') clbl.innerHTML='next round<br>incoming';
     else clbl.innerHTML='waiting for<br>players';
   }
@@ -799,14 +874,50 @@ function renderPlayer(){
   }
 }
 
+/* ---- input-format conversions (all produce "#RRGGBB") ---- */
+function ch2hex(n){ return Math.max(0,Math.min(255,Math.round(n))).toString(16).padStart(2,'0'); }
+function rgbPctToHex(r,g,b){ return '#'+ch2hex(r/100*255)+ch2hex(g/100*255)+ch2hex(b/100*255); }
+function hslToHex(h,s,l){
+  h=((h%360)+360)%360; s/=100; l/=100;
+  const c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2;
+  let r=0,g=0,b=0;
+  if(h<60){r=c;g=x;} else if(h<120){r=x;g=c;} else if(h<180){g=c;b=x;}
+  else if(h<240){g=x;b=c;} else if(h<300){r=x;b=c;} else {r=c;b=x;}
+  return '#'+ch2hex((r+m)*255)+ch2hex((g+m)*255)+ch2hex((b+m)*255);
+}
+
+/* The current guess as "#RRGGBB" from whichever input mode is active, or null. */
+function readCurrentHex(){
+  if(state.inputMode==='hex'){
+    const raw=$('hex-input').value.trim().replace(/[^0-9a-fA-F]/g,'');
+    if(raw.length!==6 && raw.length!==3) return null;
+    return normHex('#'+raw);
+  }
+  if(state.inputMode==='rgb'){
+    return normHex(rgbPctToHex(+$('rgb-r').value, +$('rgb-g').value, +$('rgb-b').value));
+  }
+  if(state.inputMode==='hsl'){
+    return normHex(hslToHex(+$('hsl-h').value, +$('hsl-s').value, +$('hsl-l').value));
+  }
+  return null;
+}
+
+function syncChanLabels(){
+  $('rgb-r-val').textContent=$('rgb-r').value+'%';
+  $('rgb-g-val').textContent=$('rgb-g').value+'%';
+  $('rgb-b-val').textContent=$('rgb-b').value+'%';
+  $('hsl-h-val').textContent=$('hsl-h').value+'°';
+  $('hsl-s-val').textContent=$('hsl-s').value+'%';
+  $('hsl-l-val').textContent=$('hsl-l').value+'%';
+}
+
 function updateEstimate(){
-  const raw=$('hex-input').value.trim().replace(/[^0-9a-fA-F]/g,'');
+  syncChanLabels();
   const submit=$('submit-btn'); const prev=$('pl-preview'); const est=$('pl-estimate');
-  const full = raw.length===6 || raw.length===3;
-  if(full){
-    const hex='#'+raw;
-    prev.style.backgroundColor=normHex(hex);
-    state.myGuess = parseHex(hex).map(x=>x.toString(16).padStart(2,'0')).join('');
+  const hex=readCurrentHex();
+  if(hex){
+    prev.style.backgroundColor=hex;
+    state.myGuess = hex.replace('#','');
     if(state.color){
       const s=scoreGuessLocal(hex, hexToOklab(normHex(state.color)));
       est.textContent = (s!=null?s:'—')+'%';
@@ -839,7 +950,7 @@ function renderCompactLB(host, lb){
     row.innerHTML =
       '<span class="rank">'+(medal(i+1)||(i+1))+'</span>'+
       '<span class="nm"><span class="conn-dot'+(p.connected?'':' off')+'"></span>'+escapeHtml(p.name)+'</span>'+
-      '<span><span class="sc">'+Math.round(p.rankedScore)+'%</span> <span class="sub">'+p.rounds+'r</span></span>';
+      '<span><span class="sc">'+(p.rankedScore==null?'—':Math.round(p.rankedScore)+'%')+'</span> <span class="sub">'+(p.rounds?p.rounds+'r':'new')+'</span></span>';
     host.appendChild(row);
   });
 }
@@ -863,9 +974,9 @@ function renderPresentLB(lb){
       '<span class="prank">'+(medal(i+1)||(i+1))+'</span>'+
       '<div style="min-width:0">'+
         '<div class="pnm">'+crown+'<span class="conn-dot'+(p.connected?'':' off')+'"></span>'+escapeHtml(p.name)+'</div>'+
-        '<div class="pmeta">'+p.rounds+' rounds · '+Math.round(p.trueAvg)+'% avg</div>'+
+        '<div class="pmeta">'+(p.rounds?(p.rounds+' rounds · '+Math.round(p.trueAvg)+'% avg'):'yet to guess')+'</div>'+
       '</div>'+
-      '<div class="pscore">'+Math.round(p.rankedScore)+'%<span class="stotal">'+Math.round(p.total)+' pts</span></div>';
+      '<div class="pscore">'+(p.rankedScore==null?'—':Math.round(p.rankedScore)+'%')+'<span class="stotal">'+Math.round(p.total)+' pts</span></div>';
     host.appendChild(row); // re-append in order
     newDom[p.playerId]=row;
   });
@@ -1001,18 +1112,32 @@ $('hex-input').addEventListener('input', e=>{
   e.target.value=v;
   updateEstimate();
 });
-$('pl-colorpick').addEventListener('input', e=>{
-  const v=e.target.value.replace('#','').toUpperCase();
-  $('hex-input').value=v; updateEstimate();
+// input-mode selector (Hex / RGB% / HSL)
+$('mode-seg').addEventListener('click', e=>{
+  const btn=e.target.closest('button[data-mode]'); if(!btn) return;
+  const mode=btn.dataset.mode;
+  state.inputMode=mode;
+  [...$('mode-seg').querySelectorAll('button')].forEach(b=>b.classList.toggle('on', b===btn));
+  document.querySelectorAll('#pl-guess-card .in-panel').forEach(p=>{
+    p.style.display = (p.dataset.panel===mode)?'':'none';
+  });
+  updateEstimate();
+});
+// RGB% + HSL sliders
+['rgb-r','rgb-g','rgb-b','hsl-h','hsl-s','hsl-l'].forEach(id=>{
+  $(id).addEventListener('input', updateEstimate);
 });
 $('submit-btn').addEventListener('click', ()=>{
-  const raw=$('hex-input').value.trim().replace(/[^0-9a-fA-F]/g,'');
-  if(raw.length!==6 && raw.length!==3){ toast('Need a full hex code'); return; }
-  const hex='#'+raw;
-  state.myGuess = parseHex(hex).map(x=>x.toString(16).padStart(2,'0')).join('');
+  const hex=readCurrentHex();
+  if(!hex){ toast('Pick a full color first'); return; }
+  state.myGuess = hex.replace('#','');
   if(state.color) state.myGuessScore = scoreGuessLocal(hex, hexToOklab(normHex(state.color)));
-  send({type:'guess', hex: normHex(hex)});
+  send({type:'guess', hex});
 });
+// Pause / resume — anyone can toggle.
+function togglePause(){ send({type: state.paused?'resume':'pause'}); }
+$('pause-btn').addEventListener('click', togglePause);
+$('pr-pause-btn').addEventListener('click', togglePause);
 
 /* ============================================================================
    Boot

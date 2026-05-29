@@ -15,7 +15,7 @@ export interface Env {
 // Tunable lifecycle constants
 // ---------------------------------------------------------------------------
 
-const ROUND_MS = 20000; // length of the GUESS phase
+const ROUND_MS = 45000; // length of the GUESS phase
 const REVEAL_MS = 8000; // length of the REVEAL phase
 
 // ---------------------------------------------------------------------------
@@ -49,8 +49,8 @@ interface Attachment {
 interface LeaderboardEntry {
   playerId: string;
   name: string;
-  rankedScore: number;
-  trueAvg: number;
+  rankedScore: number | null; // null until the player has submitted at least one round
+  trueAvg: number | null;
   rounds: number;
   total: number;
   connected: boolean;
@@ -79,6 +79,8 @@ export class GameRoom implements DurableObject {
   private targetOklab: Oklab = { L: 0, a: 0, b: 0 };
   private deadline = 0;
   private revealEndsAt = 0;
+  private paused = false;
+  private pausedRemaining = 0; // ms left on the active timer at pause time
   private submissions = new Map<string, Submission>(); // current round only
   private players = new Map<string, PlayerRecord>();
 
@@ -104,6 +106,8 @@ export class GameRoom implements DurableObject {
       (await s.get<Oklab>('targetOklab')) ?? { L: 0, a: 0, b: 0 };
     this.deadline = (await s.get<number>('deadline')) ?? 0;
     this.revealEndsAt = (await s.get<number>('revealEndsAt')) ?? 0;
+    this.paused = (await s.get<boolean>('paused')) ?? false;
+    this.pausedRemaining = (await s.get<number>('pausedRemaining')) ?? 0;
 
     const subs = await s.get<[string, Submission][]>('submissions');
     this.submissions = new Map(subs ?? []);
@@ -123,6 +127,8 @@ export class GameRoom implements DurableObject {
       targetOklab: this.targetOklab,
       deadline: this.deadline,
       revealEndsAt: this.revealEndsAt,
+      paused: this.paused,
+      pausedRemaining: this.pausedRemaining,
       submissions: [...this.submissions.entries()],
       players: [...this.players.entries()],
     });
@@ -184,6 +190,12 @@ export class GameRoom implements DurableObject {
         break;
       case 'guess':
         await this.onGuess(ws, msg);
+        break;
+      case 'pause':
+        await this.onPause();
+        break;
+      case 'resume':
+        await this.onResume();
         break;
       default:
         break;
@@ -312,8 +324,9 @@ export class GameRoom implements DurableObject {
       return;
     }
 
-    // Only during the guess phase, before the deadline.
-    if (this.phase !== 'guess' || now >= this.deadline) {
+    // Only during the guess phase, before the deadline. While paused the timer
+    // is frozen, so the deadline check is skipped (players can still lock in).
+    if (this.phase !== 'guess' || (!this.paused && now >= this.deadline)) {
       this.send(ws, { type: 'guess_ack', accepted: false });
       return;
     }
@@ -354,12 +367,65 @@ export class GameRoom implements DurableObject {
   }
 
   // -------------------------------------------------------------------------
+  // Pause / resume (anyone can toggle)
+  // -------------------------------------------------------------------------
+
+  /** Freeze the active timer. Cancels the alarm and remembers the time left. */
+  private async onPause(): Promise<void> {
+    if (this.paused) return;
+    const now = Date.now();
+    if (this.phase === 'guess') {
+      this.pausedRemaining = Math.max(0, this.deadline - now);
+    } else if (this.phase === 'reveal') {
+      this.pausedRemaining = Math.max(0, this.revealEndsAt - now);
+    } else {
+      return; // idle: nothing to pause
+    }
+    this.paused = true;
+    await this.ctx.storage.deleteAlarm();
+    await this.persist();
+    this.broadcastPaused(now);
+  }
+
+  /** Unfreeze: re-arm the alarm for the remembered remaining time. */
+  private async onResume(): Promise<void> {
+    if (!this.paused) return;
+    const now = Date.now();
+    if (this.phase === 'guess') {
+      this.deadline = now + this.pausedRemaining;
+      await this.ctx.storage.setAlarm(this.deadline);
+    } else if (this.phase === 'reveal') {
+      this.revealEndsAt = now + this.pausedRemaining;
+      await this.ctx.storage.setAlarm(this.revealEndsAt);
+    }
+    this.paused = false;
+    this.pausedRemaining = 0;
+    await this.persist();
+    this.broadcastPaused(now);
+  }
+
+  private broadcastPaused(now: number): void {
+    this.broadcast({
+      type: 'paused',
+      paused: this.paused,
+      phase: this.phase,
+      deadline: this.deadline,
+      revealEndsAt: this.revealEndsAt,
+      remainingMs: this.paused ? this.pausedRemaining : null,
+      serverNow: now,
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Round lifecycle
   // -------------------------------------------------------------------------
 
   private async startRound(): Promise<void> {
     const now = Date.now();
     this.round += 1;
+    // New round always starts unpaused.
+    this.paused = false;
+    this.pausedRemaining = 0;
 
     const t = randomTargetColor();
     this.target = t.hex;
@@ -392,6 +458,9 @@ export class GameRoom implements DurableObject {
     if (this.phase !== 'guess') return;
     const now = Date.now();
     this.phase = 'reveal';
+    // Moving on (incl. skip-to-results while paused): clear any pause.
+    this.paused = false;
+    this.pausedRemaining = 0;
 
     // Update cumulative totals for each submitting player and build results.
     const results: ResultEntry[] = [];
@@ -441,6 +510,8 @@ export class GameRoom implements DurableObject {
     this.phase = 'idle';
     this.deadline = 0;
     this.revealEndsAt = 0;
+    this.paused = false;
+    this.pausedRemaining = 0;
     this.submissions = new Map();
     await this.ctx.storage.deleteAlarm();
     await this.persist();
@@ -486,6 +557,9 @@ export class GameRoom implements DurableObject {
   private async ensureRunning(): Promise<void> {
     const now = Date.now();
 
+    // While paused, the timer is intentionally frozen — never auto-advance.
+    if (this.paused) return;
+
     // Repair an expired-but-not-advanced guess phase.
     if (this.phase === 'guess' && now >= this.deadline) {
       await this.ctx.storage.deleteAlarm();
@@ -523,6 +597,8 @@ export class GameRoom implements DurableObject {
       color: this.target,
       deadline: this.deadline,
       serverNow: now,
+      paused: this.paused,
+      remainingMs: this.paused ? this.pausedRemaining : null,
       leaderboard: this.buildLeaderboard(),
     };
 
@@ -568,22 +644,27 @@ export class GameRoom implements DurableObject {
 
     const entries: LeaderboardEntry[] = [];
     for (const [playerId, rec] of this.players.entries()) {
-      const trueAvg = rec.rounds > 0 ? rec.total / rec.rounds : 0;
-      const rs = rankedScore(rec.total, rec.rounds);
+      // Until a player has actually submitted a round, they have no score:
+      // rankedScore(0, 0) would return exactly the prior mean (55), which is
+      // misleading to show. Leave it null so the UI renders "new" / "—".
+      const played = rec.rounds > 0;
       entries.push({
         playerId,
         name: rec.name,
-        rankedScore: rs,
-        trueAvg,
+        rankedScore: played ? rankedScore(rec.total, rec.rounds) : null,
+        trueAvg: played ? rec.total / rec.rounds : null,
         rounds: rec.rounds,
         total: rec.total,
         connected: connectedIds.has(playerId),
       });
     }
 
-    entries.sort(
-      (x, y) => y.rankedScore - x.rankedScore || y.total - x.total,
-    );
+    // Scored players first (ranked desc, total tiebreak); not-yet-played last.
+    entries.sort((x, y) => {
+      const xs = x.rankedScore === null ? -Infinity : x.rankedScore;
+      const ys = y.rankedScore === null ? -Infinity : y.rankedScore;
+      return ys - xs || y.total - x.total;
+    });
     return entries;
   }
 
